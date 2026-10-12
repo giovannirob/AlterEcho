@@ -1,0 +1,29 @@
+# Catalogo Codex: python -m ai_bridge doctor. Lascia vuoto per selezione interattiva.
+codex_model = ""
+codex_binary = "codex"
+codex_home = ""
+codex_effort = "low"
+ollama_model = "qwen3.5:9b"
+ollama_url = "http://localhost:11434"
+topic = "La tecnologia rende le persone più autonome?"
+mode = "free" # free, debate, blind
+first = "codex"
+max_turns = 10 # messaggi totali: 10 = 5 risposte ciascuno
+delay = 1.0
+timeout = 180.0
+num_ctx = 4096
+num_predict = 512
+temperature = 0.7
+codex_context_budget = 24000 # guardia conservativa in byte UTF-8
+output_dir = "outputs/conversations"
+
+[roles]
+codex = "Curioso, concreto, disponibile a rivedere le proprie idee."
+ollama = "Riflessivo, propone esempi e domande."
+
+[positions]
+codex = "Sostieni inizialmente che la tecnologia aumenta l'autonomia."
+ollama = "Sostieni inizialmente che la tecnologia crea nuove dipendenze."
+
+[ollama_options]
+top_p = 0.9

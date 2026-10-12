@@ -1,0 +1,15 @@
+# Test REALE: da avviare solo dopo approvazione dell'utente.
+# Il modello Codex verrà scelto dal catalogo nell'interfaccia.
+codex_model = ""
+ollama_model = "qwen3.5:9b"
+topic = "Saluta il tuo interlocutore e proponi una sola domanda sul valore della curiosità."
+max_turns = 2
+timeout = 180.0
+num_ctx = 4096
+num_predict = 256
+first = "codex"
+codex_effort = "low"
+
+[roles]
+codex = "Scrivi al massimo tre frasi."
+ollama = "Scrivi al massimo tre frasi."
