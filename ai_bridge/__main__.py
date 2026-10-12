@@ -1,3 +1,3 @@
-from .cli import main
+from alterecho.cli import main
 
 main()

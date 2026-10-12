@@ -10,8 +10,9 @@ import sys
 import time
 
 from .base import Reply
+from .. import __version__
 from ..config import Config, BridgeError
-from ..history import Message, instructions, initial_input, context_guard, now
+from ..history import Message, instructions, initial_input, now
 
 
 SAFE_CONFIG = {
@@ -164,7 +165,7 @@ class CodexAdapter:
         self.reader = asyncio.create_task(self._read())
         self.stderr_reader = asyncio.create_task(self._stderr())
         try:
-            await self.rpc("initialize", {"clientInfo": {"name": "ai_bridge_local", "title": "AI Bridge", "version": "0.1.0"}})
+            await self.rpc("initialize", {"clientInfo": {"name": "alterecho_local", "title": "AlterEcho", "version": __version__}})
         except BridgeError as e:
             await asyncio.sleep(0.05)
             diagnostic = self.stderr_tail[-1] if self.stderr_tail else "Verifica che Codex possa accedere alla propria directory CODEX_HOME."
@@ -172,7 +173,7 @@ class CodexAdapter:
         await self.send({"method": "initialized", "params": {}})
         account = (await self.rpc("account/read", {"refreshToken": False})).get("account")
         if not account or account.get("type") != "chatgpt":
-            raise BridgeError("AI Bridge richiede l'accesso ChatGPT gestito da Codex. Esegui codex login; API key e altri provider sono rifiutati.")
+            raise BridgeError("AlterEcho richiede l'accesso ChatGPT gestito da Codex. Esegui codex login; API key e altri provider sono rifiutati.")
         cursor = None
         while True:
             page = await self.rpc("model/list", {"includeHidden": False, "cursor": cursor})
@@ -219,7 +220,7 @@ class CodexAdapter:
                     if method in {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}:
                         await self.send({"id": event["id"], "result": {"decision": "decline"}})
                     else:
-                        await self.send({"id": event["id"], "error": {"code": -32601, "message": "AI Bridge non consente strumenti o richieste esterne."}})
+                        await self.send({"id": event["id"], "error": {"code": -32601, "message": "AlterEcho non consente strumenti o richieste esterne."}})
                     await self.events.put({"method": "bridge/securityError", "params": {"message": f"Richiesta Codex rifiutata: {method}"}})
                 elif "id" in event:
                     future = self.requests.get(event["id"])
@@ -306,7 +307,6 @@ class CodexAdapter:
         text = conversation.messages[-1].text if conversation.messages else initial_input()
         if len(conversation.messages) - conversation.codex_synced_messages > 1:
             raise BridgeError("Cronologia Codex non sincronizzata.")
-        context_guard([{"content": instructions(cfg, "codex")}, *[{"content": m.text} for m in conversation.messages]], cfg.codex_context_budget, 2048)
         # Discard only notifications from setup/previous completed turns, never protocol failures.
         while not self.events.empty():
             event = self.events.get_nowait()

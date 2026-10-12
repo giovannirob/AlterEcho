@@ -91,11 +91,3 @@ def ollama_history(config: Config, conversation: Conversation):
     return result
 
 
-def context_guard(messages, budget, reserve=0):
-    # One UTF-8 byte per token plus per-message overhead is deliberately conservative.
-    upper = sum(len(m["content"].encode("utf-8")) + 64 for m in messages)
-    if upper + reserve >= budget:
-        raise BridgeError(
-            f"Limite preventivo del contesto: {upper} byte + {reserve} riservati, budget {budget}. "
-            "Nessun messaggio eliminato. Aumenta esplicitamente il contesto o avvia un nuovo dialogo."
-        )

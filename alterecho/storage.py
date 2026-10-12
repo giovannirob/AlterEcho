@@ -28,8 +28,8 @@ class Store:
         return Conversation.from_dict(json.loads(self.path.read_text(encoding="utf-8")))
 
     def export(self, conversation):
-        md = ["# AI Bridge", "", f"Argomento: {conversation.config['topic']}", f"Modalità: {conversation.config['mode']}", f"Stato: {conversation.status}", ""]
-        txt = ["AI Bridge", f"Argomento: {conversation.config['topic']}", f"Stato: {conversation.status}", ""]
+        md = ["# AlterEcho", "", f"Argomento: {conversation.config['topic']}", f"Modalità: {conversation.config['mode']}", f"Stato: {conversation.status}", ""]
+        txt = ["AlterEcho", f"Argomento: {conversation.config['topic']}", f"Stato: {conversation.status}", ""]
         for i, m in enumerate(conversation.messages, 1):
             title = f"{i}. {m.speaker} / {m.model} · {m.timestamp} · {m.seconds:.2f}s"
             md.extend([f"## {title}", "", m.text, ""])

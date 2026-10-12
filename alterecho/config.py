@@ -33,14 +33,14 @@ class Config:
         "codex": "Sostieni la posizione favorevole.",
         "ollama": "Sostieni la posizione contraria.",
     })
-    # Conservative UTF-8 byte budget, not a claimed exact tokenizer.
+    # Legacy field accepted for old TOML files and saved sessions; no longer used.
     codex_context_budget: int = 24000
     output_dir: str = "outputs/conversations"
 
     def validate(self):
         if self.mode not in {"free", "debate", "blind"} or self.first not in {"codex", "ollama"}:
             raise BridgeError("Modalità o primo interlocutore non validi.")
-        for name in ("max_turns", "num_ctx", "num_predict", "codex_context_budget"):
+        for name in ("max_turns", "num_ctx", "num_predict"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise BridgeError(f"{name} deve essere un intero positivo.")

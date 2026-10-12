@@ -2,23 +2,26 @@ import asyncio
 import json
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import httpx
 
-from ai_bridge.config import Config, BridgeError
-from ai_bridge.history import Conversation, Message, instructions, ollama_history, context_guard
-from ai_bridge.storage import Store
-from ai_bridge.coordinator import Coordinator
-from ai_bridge.adapters.base import Reply
-from ai_bridge.adapters.ollama import OllamaAdapter
-from ai_bridge.adapters.codex import CodexAdapter, child_environment, command, SAFE_CONFIG, resolve_codex
-from ai_bridge.ui import safe_text
+from alterecho.config import Config, BridgeError
+from alterecho.history import Conversation, Message, instructions, ollama_history
+from alterecho.storage import Store
+from alterecho.coordinator import Coordinator
+from alterecho.adapters.base import Reply
+from alterecho.adapters.ollama import OllamaAdapter
+from alterecho.adapters.codex import CodexAdapter, child_environment, command, SAFE_CONFIG, resolve_codex
+from alterecho.ui import safe_text
+from alterecho.cli import parser, execute
 
 
 class SilentUI:
+    def say(self, *args): pass
     def waiting(self, *args): pass
     def message(self, *args): pass
     def error(self, *args): pass
@@ -36,12 +39,24 @@ class MockAdapter:
 
 
 class LogicTests(unittest.TestCase):
+    def test_new_and_legacy_cli_names_share_the_same_help(self):
+        outputs = []
+        for module in ("alterecho", "ai_bridge"):
+            result = subprocess.run([sys.executable, "-m", module, "--help"],
+                                    cwd=Path(__file__).resolve().parents[1],
+                                    capture_output=True, text=True, encoding="utf-8", timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("usage: alterecho", result.stdout)
+            self.assertIn("AlterEcho", result.stdout)
+            outputs.append(result.stdout)
+        self.assertEqual(outputs[0], outputs[1])
+
     def test_desktop_codex_without_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             exe = Path(tmp)/"OpenAI"/"Codex"/"bin"/"installed-version"/"codex.exe"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"fixture")
-            with patch("ai_bridge.adapters.codex.shutil.which", return_value=None), patch("ai_bridge.adapters.codex.sys.platform", "win32"):
+            with patch("alterecho.adapters.codex.shutil.which", return_value=None), patch("alterecho.adapters.codex.sys.platform", "win32"):
                 self.assertEqual(resolve_codex(Config(), {"LOCALAPPDATA": tmp, "PATH": ""}), str(exe))
 
     def test_desktop_codex_uses_profile_if_localappdata_missing(self):
@@ -49,11 +64,11 @@ class LogicTests(unittest.TestCase):
             exe = Path(tmp)/"AppData"/"Local"/"OpenAI"/"Codex"/"bin"/"installed-version"/"codex.exe"
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b"fixture")
-            with patch("ai_bridge.adapters.codex.shutil.which", return_value=None), patch("ai_bridge.adapters.codex.sys.platform", "win32"):
+            with patch("alterecho.adapters.codex.shutil.which", return_value=None), patch("alterecho.adapters.codex.sys.platform", "win32"):
                 self.assertEqual(resolve_codex(Config(), {"USERPROFILE": tmp, "PATH": ""}), str(exe))
 
     def test_explicit_codex_override_is_respected(self):
-        with patch("ai_bridge.adapters.codex.shutil.which", return_value=None), patch("ai_bridge.adapters.codex.desktop_codex_candidates") as discover:
+        with patch("alterecho.adapters.codex.shutil.which", return_value=None), patch("alterecho.adapters.codex.desktop_codex_candidates") as discover:
             with self.assertRaisesRegex(BridgeError, "codex_binary"):
                 resolve_codex(Config(codex_binary="missing-custom-codex"), {})
             discover.assert_not_called()
@@ -91,11 +106,6 @@ class LogicTests(unittest.TestCase):
         cfg.mode = "debate"
         self.assertIn(cfg.positions["codex"], instructions(cfg, "codex"))
 
-    def test_context_no_silent_truncation(self):
-        messages = [{"content": "è" * 100}]
-        with self.assertRaises(BridgeError): context_guard(messages, 100)
-        self.assertEqual(messages[0]["content"], "è" * 100)
-
     def test_storage_unicode_exports_and_partial(self):
         cfg = Config()
         c = Conversation(cfg.to_dict(), messages=[Message("codex", "model", "è una prova\n**ciao**", 0.4)])
@@ -108,6 +118,7 @@ class LogicTests(unittest.TestCase):
             self.assertEqual(loaded.to_dict(), c.to_dict())
             for ext in ["md", "txt"]:
                 text = s.path.with_suffix("."+ext).read_text(encoding="utf-8")
+                self.assertTrue(text.startswith("# AlterEcho" if ext == "md" else "AlterEcho"))
                 self.assertIn(c.messages[0].text, text)
                 self.assertIn("risposta incompleta", text)
             self.assertFalse(s.path.with_name("conv.json.tmp").exists())
@@ -129,6 +140,66 @@ class LogicTests(unittest.TestCase):
 
 
 class AsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cli_resume_larger_context_preserves_thread_and_messages(self):
+        cfg = Config(first="ollama", codex_model="test-codex")
+        c = Conversation(cfg.to_dict(), messages=[
+            Message("ollama" if i % 2 == 0 else "codex", "real-model", "x" * 1100, 0.1)
+            for i in range(4)
+        ], codex_thread_id="existing-thread", codex_turn_id="last-turn", codex_synced_messages=4,
+            status="stopped", pending={"speaker": "ollama"})
+        original = c.to_dict()
+        instances = {}
+
+        class FakeCodex(MockAdapter):
+            def __init__(self, config):
+                super().__init__("codex")
+                instances["codex"] = self
+            async def start(self): return []
+            async def attach(self, conversation, checkpoint):
+                self.thread = conversation.codex_thread_id
+                self.turn = conversation.codex_turn_id
+            async def close(self): pass
+
+        class FakeOllama(MockAdapter):
+            def __init__(self, config):
+                super().__init__("ollama")
+                self.config = config
+                instances["ollama"] = self
+            async def models(self): return [self.config.ollama_model]
+            async def prepare(self): pass
+            async def generate(self, conversation, checkpoint):
+                return await super().generate(conversation, checkpoint)
+            async def close(self): pass
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp)/"c.json")
+            store.save(c)
+            args = parser().parse_args(["resume", str(store.path), "--turns", "5", "--num-ctx", "8192"])
+            with patch("alterecho.cli.CodexAdapter", FakeCodex), patch("alterecho.cli.OllamaAdapter", FakeOllama):
+                self.assertEqual(await execute(args, SilentUI()), 0)
+            saved = store.load().to_dict()
+            self.assertEqual(saved["messages"][:4], original["messages"])
+            self.assertEqual(saved["config"]["num_ctx"], 8192)
+            self.assertEqual(saved["codex_thread_id"], "existing-thread")
+            self.assertEqual(saved["codex_turn_id"], "last-turn")
+            self.assertEqual(instances["codex"].histories, [])
+            self.assertEqual(instances["ollama"].histories, [[m["text"] for m in original["messages"]]])
+            self.assertEqual(saved["messages"][4]["speaker"], "ollama")
+
+    async def test_invalid_resume_context_does_not_modify_saved_history(self):
+        c = Conversation(Config(codex_model="test-codex").to_dict())
+        with tempfile.TemporaryDirectory() as tmp:
+            store = Store(Path(tmp)/"c.json")
+            store.save(c)
+            before = store.path.read_bytes()
+            args = parser().parse_args(["resume", str(store.path), "--turns", "5", "--num-ctx", "600"])
+            with patch("alterecho.cli.CodexAdapter") as codex, patch("alterecho.cli.OllamaAdapter") as ollama:
+                with self.assertRaises(BridgeError):
+                    await execute(args, SilentUI())
+                codex.assert_not_called()
+                ollama.assert_not_called()
+            self.assertEqual(store.path.read_bytes(), before)
+
     async def test_roundtrip_multi_turn_and_resume(self):
         cfg = Config(max_turns=6)
         c = Conversation(cfg.to_dict())
@@ -192,8 +263,51 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reply.usage["tokens_per_second"], 4)
             self.assertEqual(seen[0]["messages"][-1], {"role": "user", "content": "testo esatto"})
             self.assertEqual(seen[0]["keep_alive"], 0)
+            self.assertFalse(seen[0]["truncate"])
+            self.assertFalse(seen[0]["shift"])
             self.assertNotIn("tools", seen[0])
         finally: await adapter.close()
+
+    async def test_large_history_reaches_ollama_without_byte_guard(self):
+        cfg = Config(first="ollama", num_ctx=4096)
+        c = Conversation(cfg.to_dict(), messages=[
+            Message("ollama" if i % 2 == 0 else "codex", "real-model", "è" * 3000, 0.1)
+            for i in range(4)
+        ])
+        expected = ollama_history(cfg, c)
+        before = c.to_dict()["messages"]
+        seen = []
+        def handle(request):
+            seen.append(json.loads(request.content))
+            return httpx.Response(200, text=json.dumps({"message": {"content": "continuo"}, "done": True, "done_reason": "stop"}))
+        a = OllamaAdapter(cfg, httpx.MockTransport(handle))
+        try:
+            reply = await a.generate(c, lambda: None)
+            self.assertEqual(reply.text, "continuo")
+            self.assertEqual(seen[0]["messages"], expected)
+            self.assertEqual(seen[0]["options"]["num_ctx"], 4096)
+            self.assertFalse(seen[0]["truncate"])
+            self.assertFalse(seen[0]["shift"])
+            self.assertEqual(c.to_dict()["messages"], before)
+        finally: await a.close()
+
+    async def test_real_ollama_context_error_preserves_history(self):
+        cfg = Config(first="ollama", max_turns=5)
+        c = Conversation(cfg.to_dict(), messages=[
+            Message("ollama" if i % 2 == 0 else "codex", "real-model", "x" * 3000, 0.1)
+            for i in range(4)
+        ])
+        before = c.to_dict()["messages"]
+        a = OllamaAdapter(cfg, httpx.MockTransport(lambda req: httpx.Response(400, json={"error": "the prompt exceeds the context length"})))
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                store = Store(Path(tmp)/"c.json")
+                await Coordinator(cfg, c, {"ollama": a}, store, SilentUI()).run()
+                saved = store.load()
+                self.assertEqual(saved.to_dict()["messages"], before)
+                self.assertEqual(saved.status, "stopped")
+                self.assertIn("the prompt exceeds the context length", saved.error)
+        finally: await a.close()
 
     async def test_ollama_disconnect_and_generation_limit(self):
         for chunks in [[{"message": {"content": "parziale"}}], [{"message": {"content": "parziale"}}, {"done": True, "done_reason": "length"}]]:
@@ -219,11 +333,12 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         finally: await a.close()
 
     async def test_codex_stdio_persistent_json_protocol(self):
-        cfg = Config(codex_model="test-codex", timeout=10)
+        # Legacy byte-budget values must not stop a persistent Codex turn.
+        cfg = Config(codex_model="test-codex", timeout=10, codex_context_budget=1)
         a = CodexAdapter(cfg)
         c = Conversation(cfg.to_dict())
         cmd = [sys.executable, str(Path(__file__).with_name("fake_server.py").resolve())]
-        with patch("ai_bridge.adapters.codex.command", return_value=cmd):
+        with patch("alterecho.adapters.codex.command", return_value=cmd):
             try:
                 catalog = await a.start()
                 self.assertEqual(catalog[0]["model"], "test-codex")
@@ -266,7 +381,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         a = CodexAdapter(cfg)
         c = Conversation(cfg.to_dict())
         cmd = [sys.executable, str(Path(__file__).with_name("fake_server.py").resolve())]
-        with tempfile.TemporaryDirectory() as tmp, patch("ai_bridge.adapters.codex.command", return_value=cmd):
+        with tempfile.TemporaryDirectory() as tmp, patch("alterecho.adapters.codex.command", return_value=cmd):
             s = Store(Path(tmp)/"c.json")
             try:
                 await a.start()
@@ -285,7 +400,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         async def rpc(method, params):
             if method == "account/read": return {"account": {"type": "apiKey"}}
             return await original(method, params)
-        with patch("ai_bridge.adapters.codex.command", return_value=cmd), patch.object(a, "rpc", side_effect=rpc):
+        with patch("alterecho.adapters.codex.command", return_value=cmd), patch.object(a, "rpc", side_effect=rpc):
             try:
                 with self.assertRaisesRegex(BridgeError, "ChatGPT"):
                     await a.start()
@@ -319,7 +434,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             cfg = Config(codex_model="test-codex", first="ollama", timeout=0.5)
             c = Conversation(cfg.to_dict(), messages=[Message("ollama", "b", incoming, 0)])
             a = CodexAdapter(cfg)
-            with patch("ai_bridge.adapters.codex.command", return_value=cmd):
+            with patch("alterecho.adapters.codex.command", return_value=cmd):
                 try:
                     await a.start()
                     await a.attach(c, lambda: None)

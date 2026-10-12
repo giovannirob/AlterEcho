@@ -5,7 +5,7 @@ import httpx
 
 from .base import Reply
 from ..config import Config, BridgeError
-from ..history import ollama_history, context_guard, now
+from ..history import ollama_history, now
 
 
 class OllamaAdapter:
@@ -43,9 +43,8 @@ class OllamaAdapter:
     async def generate(self, conversation, checkpoint):
         cfg = self.config
         messages = ollama_history(cfg, conversation)
-        context_guard(messages, cfg.num_ctx, cfg.num_predict + 256)
         payload = {"model": cfg.ollama_model, "messages": messages, "stream": True,
-                   "think": False, "keep_alive": 0,
+                   "think": False, "keep_alive": 0, "truncate": False, "shift": False,
                    "options": {**cfg.ollama_options, "temperature": cfg.temperature, "num_ctx": cfg.num_ctx, "num_predict": cfg.num_predict}}
         pieces = []
         last_checkpoint = 0.0
@@ -53,6 +52,13 @@ class OllamaAdapter:
         try:
             async with asyncio.timeout(cfg.timeout):
                 async with self.client.stream("POST", "/api/chat", json=payload) as response:
+                    if response.is_error:
+                        await response.aread()
+                        try:
+                            detail = response.json().get("error", response.reason_phrase)
+                        except (ValueError, AttributeError):
+                            detail = response.reason_phrase
+                        raise BridgeError(f"Ollama HTTP {response.status_code}: {detail}")
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line.strip():

@@ -5,5 +5,5 @@ if (-not (Test-Path -LiteralPath $taskPython)) {
     Write-Error 'Ambiente virtuale mancante. Segui README.md per installare.'
     exit 1
 }
-& $taskPython -m ai_bridge @args
+& $taskPython -m alterecho @args
 exit $LASTEXITCODE
