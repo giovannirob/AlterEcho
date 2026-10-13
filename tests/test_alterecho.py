@@ -1,4 +1,5 @@
 import asyncio
+import os
 import json
 from pathlib import Path
 import sys
@@ -38,18 +39,26 @@ class MockAdapter:
         return Reply(f"{self.name}-{len(conversation.messages)}", self.name)
 
 
+def setUpModule():
+    global isolated_home, isolated_env
+    isolated_home = tempfile.TemporaryDirectory()
+    isolated_env = patch.dict(os.environ, {"ALTERECHO_HOME": isolated_home.name})
+    isolated_env.start()
+
+
+def tearDownModule():
+    isolated_env.stop()
+    isolated_home.cleanup()
+
+
 class LogicTests(unittest.TestCase):
-    def test_new_and_legacy_cli_names_share_the_same_help(self):
-        outputs = []
-        for module in ("alterecho", "ai_bridge"):
-            result = subprocess.run([sys.executable, "-m", module, "--help"],
-                                    cwd=Path(__file__).resolve().parents[1],
-                                    capture_output=True, text=True, encoding="utf-8", timeout=10)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("usage: alterecho", result.stdout)
-            self.assertIn("AlterEcho", result.stdout)
-            outputs.append(result.stdout)
-        self.assertEqual(outputs[0], outputs[1])
+    def test_official_cli_help(self):
+        result = subprocess.run([sys.executable, "-m", "alterecho", "--help"],
+                                cwd=Path(__file__).resolve().parents[1],
+                                capture_output=True, text=True, encoding="utf-8", timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Uso: alterecho", result.stdout)
+        self.assertIn("AlterEcho", result.stdout)
 
     def test_desktop_codex_without_path(self):
         with tempfile.TemporaryDirectory() as tmp:

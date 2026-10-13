@@ -1,4 +1,4 @@
 #!/usr/bin/env sh
 set -eu
-cd "$(dirname "$0")"
-exec .venv/bin/python -m alterecho "$@"
+project_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+exec "$project_root/.venv/bin/python" -m alterecho "$@"

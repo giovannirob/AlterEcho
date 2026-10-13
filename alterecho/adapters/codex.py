@@ -155,7 +155,7 @@ class CodexAdapter:
 
     async def start(self):
         env = child_environment(self.config)
-        cwd = Path("work/codex-dialogue").resolve()
+        cwd = Path(self.config.codex_work_dir).resolve()
         cwd.mkdir(parents=True, exist_ok=True)
         kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
         self.process = await asyncio.create_subprocess_exec(
@@ -253,7 +253,7 @@ class CodexAdapter:
         efforts = {e["reasoningEffort"] for e in selected.get("supportedReasoningEfforts", [])}
         if efforts and cfg.codex_effort not in efforts:
             raise BridgeError(f"Ragionamento {cfg.codex_effort} non supportato; disponibili: {', '.join(sorted(efforts))}.")
-        params = {"model": cfg.codex_model, "modelProvider": "openai", "cwd": str(Path("work/codex-dialogue").resolve()),
+        params = {"model": cfg.codex_model, "modelProvider": "openai", "cwd": str(Path(cfg.codex_work_dir).resolve()),
                   "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": "read-only",
                   "baseInstructions": instructions(cfg, "codex"), "developerInstructions": "Dialogo soltanto testuale. Nessuno strumento è autorizzato.",
                   "config": safe_config(child_environment(cfg))}

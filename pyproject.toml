@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alterecho"
-version = "0.2.0"
+version = "0.3.0"
 description = "Conversazione locale fra Codex e Ollama"
 requires-python = ">=3.11"
-dependencies = ["httpx>=0.27,<1", "rich>=13.7,<15"]
+dependencies = ["httpx>=0.27,<1", "rich>=13.7,<15", "markdown-it-py>=3,<5", "Pygments>=2.17,<3"]
 
 [project.scripts]
 alterecho = "alterecho.cli:main"
-ai-bridge = "alterecho.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["alterecho*", "ai_bridge*"]
+include = ["alterecho*"]
+
+[tool.setuptools.package-data]
+"alterecho.exporters" = ["templates/*.html", "templates/*.css", "templates/*.js"]

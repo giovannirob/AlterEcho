@@ -39,8 +39,10 @@ class Conversation:
 
     @classmethod
     def from_dict(cls, data):
-        if data.get("schema_version") != 1:
+        if not isinstance(data, dict) or data.get("schema_version") != 1:
             raise BridgeError("Formato di conversazione non supportato.")
+        if not isinstance(data.get("messages"), list) or not isinstance(data.get("created_at"), str):
+            raise BridgeError("Storico non valido: messaggi o data mancanti/incoerenti.")
         data = dict(data)
         data["messages"] = [Message(**m) for m in data["messages"]]
         result = cls(**data)
