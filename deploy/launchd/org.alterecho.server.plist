@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>org.alterecho.server</string>
+  <key>ProgramArguments</key><array><string>/opt/alterecho/venv/bin/alterecho</string><string>serve</string></array>
+  <key>UserName</key><string>_alterecho</string>
+  <key>WorkingDirectory</key><string>/var/lib/alterecho</string>
+  <key>EnvironmentVariables</key><dict><key>ALTERECHO_HOME</key><string>/var/lib/alterecho</string><key>CODEX_HOME</key><string>/var/lib/alterecho-codex</string><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ExitTimeOut</key><integer>45</integer>
+  <key>StandardOutPath</key><string>/var/log/alterecho.log</string>
+  <key>StandardErrorPath</key><string>/var/log/alterecho-error.log</string>
+</dict></plist>

@@ -58,6 +58,12 @@ def child_environment(config):
         env["CODEX_HOME"] = str(Path(env["USERPROFILE"]) / ".codex")
     for key in ("OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"):
         env.pop(key, None)
+    for key in list(env):
+        if key.endswith("_API_KEY") or key.startswith("ALTERECHO_TOKEN"):
+            env.pop(key, None)
+    for profile in config.adapter_pair.values():
+        if profile.get("api_key_env"):
+            env.pop(profile["api_key_env"], None)
     return env
 
 
@@ -349,6 +355,8 @@ class CodexAdapter:
                         ident = p["itemId"]
                         pieces[ident] = pieces.get(ident, "") + p["delta"]
                         conversation.partial = {"speaker": "codex", "model": cfg.codex_model, "text": "\n\n".join(pieces.values()), "timestamp": now()}
+                        if hasattr(checkpoint, "delta"):
+                            checkpoint.delta("codex", cfg.codex_model, p["delta"])
                         if time.monotonic() - last_save > 0.5:
                             checkpoint()
                             last_save = time.monotonic()

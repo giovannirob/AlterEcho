@@ -1,0 +1,7 @@
+# TLS automatico con dominio/DNS corretti; nessuna porta applicativa pubblica.
+echo.example.org {
+    reverse_proxy 127.0.0.1:8765 {
+        flush_interval -1
+    }
+    header Strict-Transport-Security "max-age=31536000"
+}

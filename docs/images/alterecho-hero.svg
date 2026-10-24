@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title desc">
+  <title id="title">AlterEcho — due prospettive, una conversazione</title>
+  <desc id="desc">Illustrazione del funzionamento, non uno screenshot. Due interlocutori A e B scambiano idee sullo stesso argomento.</desc>
+  <rect x="1" y="1" width="1198" height="518" rx="24" fill="#101319" stroke="#2a313b" stroke-width="2"/>
+  <g font-family="Segoe UI,Arial,sans-serif">
+    <text x="60" y="76" fill="#e5e9f0" font-size="36" font-weight="600" letter-spacing="-1">Alter<tspan fill="#80ddcf">Echo</tspan></text>
+    <text x="1140" y="70" text-anchor="end" fill="#919baa" font-size="16" letter-spacing="2">DUE PROSPETTIVE. UN DIALOGO.</text>
+    <text x="60" y="167" fill="#e5e9f0" font-size="52" font-weight="500" letter-spacing="-1.5">Le idee prendono forma,</text>
+    <text x="60" y="232" fill="#e5e9f0" font-size="52" font-weight="500" letter-spacing="-1.5">una risposta alla volta.</text>
+    <circle cx="971" cy="178" r="80" fill="none" stroke="#80ddcf" stroke-opacity=".22" stroke-width="2"/>
+    <circle cx="1045" cy="178" r="80" fill="none" stroke="#aaa0ef" stroke-opacity=".22" stroke-width="2"/>
+    <circle cx="939" cy="168" r="31" fill="#1c3935" stroke="#80ddcf" stroke-opacity=".65"/>
+    <circle cx="1070" cy="192" r="31" fill="#2b2844" stroke="#aaa0ef" stroke-opacity=".65"/>
+    <text x="939" y="178" fill="#80ddcf" text-anchor="middle" font-size="28">A</text>
+    <text x="1070" y="202" fill="#aaa0ef" text-anchor="middle" font-size="28">B</text>
+    <rect x="60" y="295" width="500" height="134" rx="14" fill="#181d25" stroke="#2a313b"/>
+    <rect x="640" y="295" width="500" height="134" rx="14" fill="#181d25" stroke="#2a313b"/>
+    <path d="M60 315v94" stroke="#80ddcf" stroke-width="3"/>
+    <path d="M1140 315v94" stroke="#aaa0ef" stroke-width="3"/>
+    <text x="89" y="341" fill="#80ddcf" font-size="25" font-weight="600">A · Una prospettiva</text>
+    <text x="89" y="389" fill="#b9c2cf" font-size="25">Propone un’idea.</text>
+    <text x="669" y="341" fill="#aaa0ef" font-size="25" font-weight="600">B · Un’altra prospettiva</text>
+    <text x="669" y="389" fill="#b9c2cf" font-size="25">La mette alla prova.</text>
+    <path d="M580 351h40m-9-9 9 9-9 9M620 377h-40m9-9-9 9 9 9" stroke="#919baa" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="60" y="477" fill="#919baa" font-size="19">Scegli i modelli. Assegna un argomento. Segui il confronto.</text>
+    <text x="1140" y="477" text-anchor="end" fill="#919baa" font-size="13" letter-spacing="1">ILLUSTRAZIONE</text>
+  </g>
+</svg>

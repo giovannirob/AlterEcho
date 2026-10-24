@@ -1,154 +1,179 @@
 # AlterEcho
 
-Fai conversare **due modelli** automaticamente, dal terminale. Scegli gli interlocutori, assegna un argomento e osserva il dialogo.
+**Due modelli. Un argomento. Il dialogo prende forma.**
 
-La configurazione predefinita usa Codex con accesso ChatGPT e Ollama locale, senza API key OpenAI. Puoi aggiungere profili OpenAI e OpenRouter se scegli di usare le rispettive API con una tua chiave e relativa fatturazione. Le conversazioni mantengono lo storico e vengono salvate in JSON, Markdown, TXT e HTML.
+Scegli due intelligenze artificiali, assegna un tema e segui come si rispondono: un'idea, una replica, un nuovo punto di vista.
 
-## Avvio
+AlterEcho gestisce la conversazione e la sua memoria. Tu puoi osservarla dal browser o dal terminale, metterla in pausa e tornarci in seguito.
 
-Se AlterEcho è già installato, apri un terminale in qualsiasi cartella:
+**Versione 1.0** · Python 3.11+ · Web UI e CLI
 
-```powershell
+[Provalo](#provalo) · [Interfaccia](#uno-sguardo-allinterfaccia) · [Documentazione](#documentazione)
+
+![Dashboard reale di AlterEcho in tema scuro, con navigazione, provider, statistiche e conversazioni recenti.](docs/images/dashboard.png)
+
+*La Web UI in tema scuro. Screenshot fornito dall'autore: i contatori mostrati appartengono a quella istanza e non sono un benchmark.*
+
+## Che cos'è AlterEcho?
+
+È un progetto per far conversare autonomamente due modelli AI. Invece di porre la stessa domanda a due finestre separate, puoi lasciare che ciascun modello risponda a ciò che ha scritto l'altro.
+
+Per esempio: **«La tecnologia ci rende più autonomi?»** Puoi assegnare a un interlocutore la posizione favorevole e all'altro quella critica. Scegli la durata dello scambio e osserva quali argomenti propongono, come li contestano e se rivedono le proprie idee.
+
+I messaggi restano salvati, insieme ai modelli scelti e alle statistiche disponibili. Puoi rileggerli, riprendere il dialogo o esportarlo per condividerlo.
+
+## Cosa puoi farci?
+
+- **Dare forma al confronto.** Scegli modelli, argomento, personalità, posizioni iniziali e numero di messaggi.
+- **Seguire il dialogo in diretta.** Leggi le risposte mentre arrivano, dal terminale o dalla Web UI.
+- **Fermarti e ripartire.** Metti in pausa tra un turno e l'altro, arresta una conversazione o riprendine una salvata.
+- **Confrontare prospettive diverse.** Affianca un modello locale a uno degli altri provider disponibili.
+- **Ritrovare le conversazioni.** Consulta la cronologia, cerca nei messaggi e osserva tempi e token quando forniti dal provider.
+- **Portare via i risultati.** Esporta in Markdown, TXT o HTML autonomo da aprire anche offline; dal browser è disponibile anche il JSON.
+
+Puoi scegliere un dialogo **libero**, un **dibattito** con posizioni iniziali distinte o la modalità **cieca**, in cui il prompt non esplicita l'identità dell'interlocutore. Quest'ultima non garantisce che un modello non si identifichi spontaneamente.
+
+## Uno sguardo all'interfaccia
+
+La Web UI usa uno stile essenziale, con tema chiaro e scuro e un layout pensato anche per schermi piccoli. Le viste disponibili sono:
+
+| Vista | Cosa trovi |
+| --- | --- |
+| **Panoramica** | Conversazioni attive e recenti, provider, cataloghi verificati, tempi e token misurati |
+| **Nuova conversazione** | Scelta dei due interlocutori, tema, modalità, personalità e opzioni di generazione |
+| **Conversazione** | Messaggi in diretta, avanzamento, ricerca, copia, statistiche, pausa, arresto, ripresa ed export |
+| **Cronologia e impostazioni** | Dialoghi salvati, filtri, preferenze condivise e profili dei provider |
+
+### Prepara i due interlocutori
+
+![Schermata reale di creazione: profili Codex e Ollama, modelli, argomento, modalità dibattito, primo interlocutore e numero di messaggi.](docs/images/nuova-conversazione.png)
+
+Scegli A e B, assegna il tema e imposta lo scambio. Le opzioni avanzate raccolgono personalità, ragionamento e parametri dei provider; **Prova demo** permette di esplorare il flusso senza modelli reali.
+
+<details>
+<summary>Uno sguardo ai profili dei provider</summary>
+
+![Schermata reale dei profili Codex e Ollama con modello preferito ed endpoint locale, senza credenziali esposte.](docs/images/profili.png)
+
+Qui gestisci i profili, non i valori delle chiavi API. Le credenziali dei provider restano sul server.
+
+</details>
+
+Le schermate sono autentiche e fornite dall'autore. Non è ancora inclusa una cattura dei messaggi durante una conversazione. [Provenienza e dettagli delle immagini](docs/images/README.md).
+
+## Come funziona?
+
+Un unico servizio centrale gestisce conversazioni, memoria, provider e salvataggi. Terminale e browser sono due interfacce dello stesso **server headless**: una conversazione avviata dalla CLI è la stessa che ritrovi nella Web UI.
+
+![Schema: terminale e browser si collegano entrambi ad AlterEcho Server, che gestisce Codex CLI, Ollama, OpenAI API e OpenRouter API.](docs/images/architettura.svg)
+
+Chiudere il browser o scollegare la CLI **non interrompe una conversazione in corso**. Il server deve restare acceso; puoi eseguirlo in primo piano, in Docker o come servizio di sistema. Non serve un ambiente desktop sul server.
+
+## Provalo
+
+Scarica o clona il repository e apri un terminale nella cartella di AlterEcho. Puoi scegliere Docker oppure un'installazione Python.
+
+Per esplorare il programma non devi subito collegare modelli reali: dopo aver avviato il server puoi scegliere **Prova demo** nella Web UI oppure eseguire `alterecho demo --turns 4`. La demo usa risposte simulate, senza quote AI.
+
+### Con Docker
+
+Dalla cartella del repository, con Docker e Compose disponibili:
+
+1. Crea `secrets/service-token.txt` con un token casuale di almeno 32 caratteri, riservato agli account autorizzati. Il file deve essere leggibile dal container: [generazione e permessi](docs/GUIDA.md#preparare-il-token-per-docker).
+2. Compila e avvia il servizio:
+
+   ```sh
+   docker compose up --build -d
+   ```
+
+3. Apri **http://127.0.0.1:8765** e inserisci il token che hai preparato.
+
+La build compila anche la Web UI: non richiede Node.js installato sull'host. Compose mantiene i dati in volumi e pubblica la porta soltanto su localhost. Per collegare Codex o Ollama, segui la [guida Docker e provider](deploy/README.md#docker-e-codex-headless).
+
+### Con Python, dal sorgente
+
+Servono **Python 3.11+** e **Node.js 22.12+** per compilare il frontend Svelte. Dalla cartella del repository, preferibilmente in un [ambiente virtuale](docs/GUIDA.md#installazione-locale):
+
+```sh
+cd web
+npm ci
+npm run build
+cd ..
+python -m pip install ".[server]"
+alterecho serve
+```
+
+Apri **http://127.0.0.1:8765**. Al primo avvio locale il server crea `server-token` nella sua cartella di configurazione: copia quel valore nel modulo di accesso della Web UI. [Dove trovare il token](docs/GUIDA.md#token-del-server).
+
+Lascia aperto il terminale del server. In un **secondo terminale**, usando lo stesso ambiente Python, esegui:
+
+```sh
 alterecho
 ```
 
-Il menu principale è organizzato così:
+Il client locale sullo stesso account legge automaticamente il token. La configurazione iniziale dei provider è spiegata [qui](docs/GUIDA.md#provider-e-profili); non è necessaria per la demo.
 
-| Voce | Cosa fa |
-| --- | --- |
-| **1. Nuova conversazione** | Scegli i due modelli, l'argomento e il massimo dei messaggi |
-| **2. Archivio conversazioni** | Riprendi, elimina o visualizza in HTML una chat salvata |
-| **3. Impostazioni** | Configura dialogo, adapter, parametri, limiti e salvataggi |
-| **0. Esci** | Chiude il programma |
+<details>
+<summary>Se hai già un pacchetto compilato</summary>
 
-Per iniziare, scegli **1**, seleziona un modello Ollama già disponibile e un modello Codex mostrato nel catalogo, inserisci argomento e limite, poi conferma il riepilogo. Per una prova breve imposta **2 messaggi totali**.
+Le build locali verificate producono un wheel, un archivio sorgente e uno standalone Windows in `dist/`. Usa questa strada solo se possiedi già quei file: qui non viene presupposta una release pubblica o un'installazione da PyPI.
 
-Un messaggio è una risposta di un modello: **10 messaggi = 5 risposte ciascuno**. La generazione inizia solo dopo la conferma; `n` annulla. Le scelte confermate vengono ricordate.
-
-Durante il dialogo, **Ctrl+C** interrompe e salva le risposte e i parziali ricevuti. Il programma torna al menu; Ctrl+C nel menu principale esce.
-
-## Installazione
-
-Serve **Python 3.11+**. Per gli interlocutori predefiniti servono **Codex CLI compatibile con app-server** con accesso ChatGPT e **Ollama** in esecuzione, normalmente su `http://localhost:11434`. Open WebUI è facoltativo. Con una coppia di adapter diversa servono solo i servizi selezionati.
-
-Prima dell'uso, installa in Ollama il modello locale che vuoi utilizzare. Ad esempio:
+Se hai il wheel corrispondente, puoi installarlo senza compilare il frontend:
 
 ```sh
-ollama pull nome-modello
+python -m pip install "dist/alterecho-1.0.0-py3-none-any.whl[server]"
+alterecho serve
 ```
 
-AlterEcho non scarica modelli da solo. Per configurare l'accesso Codex, usa `codex login` e scegli ChatGPT.
+La Web UI è già inclusa. Codex e Ollama restano dipendenze esterne. Per uv, installazioni con sola CLI e build standalone, consulta la [guida completa](docs/GUIDA.md#installazione-locale).
 
-### Windows
+</details>
 
-Dalla cartella del progetto:
+## Modelli e provider
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-powershell -ExecutionPolicy Bypass -File .\install-user.ps1
-```
+AlterEcho dispone di quattro adapter. L'accesso ai modelli dipende da ciò che hai installato, dal tuo account e dai servizi configurati.
 
-Lo script chiede conferma e installa il comando nel **PATH utente**, senza privilegi amministrativi. Apri una nuova PowerShell; se VS Code o Windows Terminal era già aperto, riavvialo.
-
-Senza installazione globale puoi usare `.\.venv\Scripts\alterecho.exe`.
-
-### Linux
-
-Dalla cartella del progetto:
-
-```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-sh install-user.sh
-```
-
-Accetta l'installazione e apri un nuovo terminale. Il comando viene creato in `~/.local/bin`; i profili Bash/Zsh vengono aggiornati con il tuo consenso. Senza installazione globale usa `.venv/bin/python -m alterecho`.
-
-Linux è predisposto, ma non è stato verificato su un host Linux.
-
-### Verifica e aggiornamento
-
-```sh
-alterecho doctor
-```
-
-`doctor` controlla Codex/ChatGPT, Ollama e i cataloghi, senza generare risposte.
-
-Per aggiornare su Windows, dalla cartella del progetto ripeti `.\.venv\Scripts\python.exe -m pip install -e .` e `install-user.ps1`; su Linux ripeti i comandi di installazione del pacchetto e del launcher. **Se sposti la cartella, ricrea il virtualenv e reinstalla il launcher.**
-
-## Impostazioni e salvataggi
-
-Le **Impostazioni** sono divise in quattro sezioni:
-
-| Sezione | Opzioni |
-| --- | --- |
-| **Conversazione** | Modalità, personalità e chi inizia |
-| **Modelli e adapter** | Profili e integrazioni, Codex, parametri Ollama |
-| **Esecuzione e salvataggi** | Numero di messaggi, timeout, ritardo e cartella delle chat |
-| **Diagnostica e manutenzione** | Verifica connessioni e ripristino delle impostazioni |
-
-Dopo una modifica resti nella stessa sezione. Usa **0** per tornare al livello precedente.
-
-| File | Windows | Linux, percorsi predefiniti |
+| Provider | Come si collega | Cosa serve |
 | --- | --- | --- |
-| Impostazioni | `%APPDATA%\AlterEcho\config.json` | `~/.config/alterecho/config.json` |
-| Conversazioni | `Documenti\AlterEcho\conversations` (cartella Documenti di Windows, anche reindirizzata) | `$XDG_DOCUMENTS_DIR/AlterEcho/conversations`, oppure `~/Documents/AlterEcho/conversations` |
+| **Codex CLI** | App-server ufficiale, con accesso ChatGPT | Codex CLI installato e autenticato sul server; disponibilità e limiti del proprio account |
+| **Ollama** | Servizio locale o endpoint fidato | Ollama in esecuzione e un modello installato esplicitamente |
+| **OpenAI API** | API del provider | Chiave sul server e relativo accesso/fatturazione API |
+| **OpenRouter API** | API del provider | Chiave sul server e relativo accesso/fatturazione API |
 
-La cartella dei salvataggi è modificabile dal menu. Per ogni nuova chat viene creata una sottocartella con il suo ID, che contiene JSON ed esportazioni `.md`, `.txt` e `.html`. Tutti i file vengono aggiornati dopo ogni risposta e alla chiusura della chat. Riprendere una conversazione aggiorna gli stessi file con i nuovi messaggi. Il percorso viene mostrato nel terminale. Gli storici precedenti salvati direttamente nella cartella vengono ancora rilevati.
+Le API a consumo sono segnalate e richiedono conferma prima dell'avvio e della ripresa. Le chiavi restano nell'ambiente del server e non vengono trasferite dalla CLI o inserite nella Web UI. Codex con ChatGPT e OpenAI API sono due adapter distinti.
 
-Su macOS il percorso predefinito è `~/Documents/AlterEcho/conversations`. I vecchi salvataggi in AppData o nella directory dati Linux restano individuabili; il precedente percorso predefinito nelle preferenze passa a Documenti. Le cartelle personalizzate restano valide. `ALTERECHO_HOME` conserva il comportamento portatile con salvataggi in `data/conversations`.
+[Configurazione dei provider, autenticazione e limiti delle coppie](docs/GUIDA.md#provider-e-profili). Claude Code non è attualmente implementato.
 
-L'HTML è un singolo file autonomo: CSS, JavaScript e messaggi sono incorporati, quindi puoi copiarlo e aprirlo offline in un browser. Offre tema scuro/chiaro, ricerca nei messaggi, copia di messaggi e codice, navigazione e statistiche. Non carica risorse dalla rete; i link esterni si aprono solo se cliccati.
+## Dal browser al terminale
 
-Per leggerlo scegli **Archivio conversazioni → Visualizza in HTML** e seleziona la chat: il programma rigenera il file e lo apre nel browser. Digita nella barra di ricerca per evidenziare e filtrare i messaggi, oppure usa **Tema chiaro / Tema scuro** per cambiare aspetto. Se avevi già aperto il file durante una continuazione, ricarica la pagina per vedere gli aggiornamenti.
-
-## Adapter e provider API
-
-Apri **Impostazioni → Modelli e adapter → Adapter e integrazioni → Aggiungi adapter**. Puoi creare profili Codex CLI, Ollama locale, OpenAI API e OpenRouter API. Per ogni profilo scegli un nome, il modello preferito facoltativo e l'eseguibile o l'endpoint locale, quando pertinente. Puoi poi modificarlo, rimuoverlo e selezionarlo in **Scegli interlocutori A e B**. Codex CLI occupa la posizione A; è consentito un solo adapter Ollama per conversazione.
-
-I profili sono in `adapters.json`, accanto alle impostazioni. Le chiavi API non vanno inserite nel menu: indica soltanto il nome della variabile d'ambiente, normalmente `OPENAI_API_KEY` o `OPENROUTER_API_KEY`, e impostala nel terminale prima di avviare AlterEcho. Gli endpoint API sono quelli ufficiali. Nessun adapter viene installato o autenticato automaticamente; non si acquistano crediti. Il riepilogo segnala l'uso di provider API prima dell'avvio; **Limite token delle risposte API** regola il massimo richiesto senza cambiare il ragionamento dei modelli.
-
-Le chat salvano una copia della configurazione dei due interlocutori, senza il valore delle chiavi: cambiare un profilo non cambia gli storici. Le API ricevono a ogni turno la cronologia completa con i ruoli corretti; Codex conserva il proprio thread. **Torna a Codex e Ollama predefiniti** ripristina la coppia iniziale. La diagnostica consulta i cataloghi della coppia selezionata senza generare risposte.
-
-OpenAI e OpenRouter sono provider di modelli, non server MCP. MCP serve a collegare strumenti e risorse: questa versione non collega server MCP e non esegue strumenti nei dialoghi. Claude Code non è ancora un adapter implementato. Riferimenti: [OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create), [OpenRouter](https://openrouter.ai/docs/quickstart).
-
-**Riprendi conversazione** elenca anche gli storici nella precedente `outputs/conversations` del progetto. Verifica la sessione Codex prima di chiedere conferma: un thread mancante o incompleto può impedire la ripresa. Gli storici demo non si riprendono con modelli reali.
-
-## Memoria Ollama
-
-Il modello locale rimane caricato tra i turni con `ollama_keep_alive = -1` per impostazione predefinita. In **Impostazioni → Modelli e adapter → Parametri Ollama** puoi scegliere `-1` (senza scadenza), `"10m"`, `"5m"` o `0` (scarica dopo ogni risposta). Le configurazioni precedenti ricevono i nuovi valori predefiniti senza riscrivere gli storici. Ollama può comunque liberare memoria o ricaricare un modello per esigenze del runtime.
-
-**Scarica il modello alla fine della conversazione** (`ollama_unload_on_exit`, predefinito `true`) è una richiesta prudente. L'API condivisa non permette di verificare se un'altra applicazione usa lo stesso modello: in questo caso AlterEcho omette lo scaricamento e lo segnala. Protegge anche i modelli già residenti e non scarica altri modelli all'avvio. Con `-1` il modello può quindi restare caricato anche dopo la chat; scegli una durata temporizzata se vuoi una scadenza, oppure esegui `ollama stop NOME_MODELLO` quando nessun'altra applicazione lo usa.
-
-Per controllare durante un dialogo usa `ollama ps` da un secondo terminale: il modello deve rimanere nell'elenco durante i turni Codex. Puoi anche interrogare `http://localhost:11434/api/ps` (PowerShell: `Invoke-RestMethod http://localhost:11434/api/ps`). I nuovi messaggi mostrano separatamente caricamento e generazione quando Ollama fornisce le durate; un piccolo tempo di caricamento non è, da solo, prova di un ricaricamento completo. Riferimento: [gestione ufficiale keep_alive](https://docs.ollama.com/faq).
-
-## Guida e comandi
+Puoi iniziare un dialogo nel browser e seguirlo dalla CLI, o fare il contrario. Cronologia, impostazioni e operazioni appartengono al server condiviso.
 
 ```sh
-alterecho help
-alterecho help run
+alterecho status                       # Stato del servizio
+alterecho run                          # Crea e avvia un dialogo
+alterecho watch ID                     # Segui una conversazione
+alterecho pause ID                     # Sospendi tra i turni
+alterecho resume ID --turns 20         # Riprendi fino a 20 messaggi totali
+alterecho export ID --format html      # Scarica un HTML offline
 ```
 
-Puoi usare anche `--help`, per esempio `alterecho resume --help`.
+Nella CLI **Ctrl+C scollega il client**; `alterecho stop ID` arresta la generazione sul server. Per la guida completa ai comandi usa `alterecho help`.
 
-| Comando | Uso |
+## Anche da un altro dispositivo
+
+Puoi tenere il server su un computer e collegarti da un altro terminale, da un browser nella tua LAN o tramite un collegamento remoto protetto. L'accesso di rete va abilitato esplicitamente; il default resta localhost.
+
+Per l'accesso remoto usa autenticazione e **HTTPS**, normalmente attraverso un reverse proxy, oppure una VPN fidata. L'apertura diretta della porta applicativa su Internet non è la configurazione consigliata. [LAN, HTTPS e collegamento della CLI remota](docs/GUIDA.md#lan-e-accesso-remoto).
+
+## Documentazione
+
+| Per approfondire | Dove andare |
 | --- | --- |
-| `alterecho run` | Nuovo dialogo con selezione e conferma |
-| `alterecho doctor` | Diagnostica senza generazione |
-| `alterecho demo --turns 4` | Simulazione locale, senza modelli o quote |
-| `alterecho run --config config.toml` | Usa una configurazione TOML personalizzata |
-| `alterecho resume chat.json --turns 20` | Ripresa avanzata fino a **20 messaggi totali**, inclusi quelli salvati |
-| `alterecho export chat.json` | Rigenera Markdown, TXT e HTML accanto al JSON |
-| `alterecho export chat.json --format html` | Genera soltanto l'HTML |
-
-Per preparare un TOML parti da [config.example.toml](config.example.toml). `run --non-interactive` avvia subito la generazione con la configurazione scelta; anche il comando avanzato `resume` genera dopo le verifiche, senza la conferma del menu. L'esportazione di chat esistenti non contatta i modelli e non modifica il JSON canonico.
-
-## Se qualcosa non funziona
-
-- **Comando non trovato:** apri un nuovo terminale o ripeti l'installazione del launcher.
-- **Errore di connessione o accesso:** esegui `alterecho doctor`; verifica Ollama e il login ChatGPT in Codex.
-- **Limite di contesto o risposta:** lo storico resta salvato. Regola i parametri appropriati o avvia un nuovo dialogo; la memoria non viene tagliata automaticamente.
-- **Ripresa rifiutata:** leggi il motivo mostrato. Non usare contemporaneamente la stessa chat o il suo thread Codex da altre applicazioni.
-
-Per struttura del progetto, funzionamento degli adapter, sicurezza, configurazione avanzata e test, leggi [ARCHITETTURA.md](ARCHITETTURA.md).
+| Installazione, primo avvio e token | [Guida all'uso](docs/GUIDA.md#installazione-locale) |
+| Configurazione e autenticazione dei provider | [Provider e profili](docs/GUIDA.md#provider-e-profili) |
+| Docker, volumi e servizi Windows/Linux/macOS | [Installazione persistente](deploy/README.md) |
+| CLI remota, LAN e reverse proxy | [Accesso da altri dispositivi](docs/GUIDA.md#cli-su-un-altro-computer) |
+| Salvataggi, backup e migrazione | [Percorsi e storici](docs/GUIDA.md#percorsi-backup-e-migrazione) |
+| Architettura, API e sicurezza | [Documentazione tecnica](ARCHITETTURA.md) |
+| Test eseguiti e limiti delle verifiche | [Resoconto locale](docs/VERIFICA.md) |
+| Errori di connessione, accesso e ripresa | [Risoluzione dei problemi](docs/GUIDA.md#risoluzione-dei-problemi-e-limiti) |

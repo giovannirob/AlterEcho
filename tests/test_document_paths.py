@@ -9,7 +9,8 @@ from alterecho.paths import documents_dir, conversations_dir
 from alterecho.config import Config
 from alterecho.preferences import UserSettings, history_directories
 from alterecho.storage import Store
-from alterecho.cli import execute, parser
+from alterecho.cli import parser
+from tests.server_harness import execute
 
 
 class DocumentPathTests(unittest.TestCase):
@@ -64,6 +65,7 @@ class DocumentPathTests(unittest.TestCase):
 
     def test_demo_saves_all_formats_in_documents_without_real_providers(self):
         class UI:
+            def say(self, *a): pass
             def waiting(self, *a): pass
             def message(self, *a): pass
             def error(self, *a): pass
@@ -73,7 +75,7 @@ class DocumentPathTests(unittest.TestCase):
             cfg = Config()
         settings = MagicMock()
         settings.load.return_value = cfg
-        with patch("alterecho.cli.CodexAdapter") as codex, patch("alterecho.cli.OllamaAdapter") as ollama:
+        with patch("alterecho.profile_runtime.CodexAdapter") as codex, patch("alterecho.profile_runtime.OllamaAdapter") as ollama:
             self.assertEqual(asyncio.run(execute(parser().parse_args(["demo", "--turns", "2"]), UI(), settings)), 0)
             codex.assert_not_called()
             ollama.assert_not_called()

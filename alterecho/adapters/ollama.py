@@ -84,6 +84,8 @@ class OllamaAdapter:
                         if part:
                             pieces.append(part)
                             conversation.partial = {"speaker": self.speaker, "model": cfg.ollama_model, "text": "".join(pieces), "timestamp": now()}
+                            if hasattr(checkpoint, "delta"):
+                                checkpoint.delta(self.speaker, cfg.ollama_model, part)
                             if time.monotonic() - last_checkpoint > 0.5:
                                 checkpoint()
                                 last_checkpoint = time.monotonic()

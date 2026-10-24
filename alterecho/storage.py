@@ -103,6 +103,18 @@ class Store:
                     removed.append(path)
             except OSError as e:
                 raise BridgeError(f"Impossibile eliminare {path}: {e}") from e
+        # Resume backups belong to this same history. Do not retain a hidden
+        # copy after an explicit deletion, or touch backups of other histories.
+        backups = self.path.parent / ".backups"
+        if backups.is_dir() and not backups.is_symlink():
+            for path in backups.iterdir():
+                if path.is_file() and not path.is_symlink() and path.name.startswith(self.path.name + ".") and path.name.endswith(".bak"):
+                    path.unlink()
+                    removed.append(path)
+            try:
+                backups.rmdir()
+            except OSError:
+                pass
         # New conversations live in a directory named after their ID. Remove
         # that directory only when it is now empty and the ID matches.
         if conversation_id and self.path.stem == conversation_id and self.path.parent.name == conversation_id:

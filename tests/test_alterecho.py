@@ -18,7 +18,8 @@ from alterecho.adapters.base import Reply
 from alterecho.adapters.ollama import OllamaAdapter
 from alterecho.adapters.codex import CodexAdapter, child_environment, command, SAFE_CONFIG, resolve_codex
 from alterecho.ui import safe_text
-from alterecho.cli import parser, execute
+from alterecho.cli import parser
+from tests.server_harness import execute
 
 
 class SilentUI:
@@ -163,14 +164,14 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self, config):
                 super().__init__("codex")
                 instances["codex"] = self
-            async def start(self): return []
+            async def start(self): return [{"model": "test-codex"}]
             async def attach(self, conversation, checkpoint):
                 self.thread = conversation.codex_thread_id
                 self.turn = conversation.codex_turn_id
             async def close(self): pass
 
         class FakeOllama(MockAdapter):
-            def __init__(self, config):
+            def __init__(self, config, speaker="ollama"):
                 super().__init__("ollama")
                 self.config = config
                 instances["ollama"] = self
@@ -184,7 +185,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             store = Store(Path(tmp)/"c.json")
             store.save(c)
             args = parser().parse_args(["resume", str(store.path), "--turns", "5", "--num-ctx", "8192"])
-            with patch("alterecho.cli.CodexAdapter", FakeCodex), patch("alterecho.cli.OllamaAdapter", FakeOllama):
+            with patch("alterecho.profile_runtime.CodexAdapter", FakeCodex), patch("alterecho.profile_runtime.OllamaAdapter", FakeOllama):
                 self.assertEqual(await execute(args, SilentUI()), 0)
             saved = store.load().to_dict()
             self.assertEqual(saved["messages"][:4], original["messages"])
@@ -202,7 +203,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             store.save(c)
             before = store.path.read_bytes()
             args = parser().parse_args(["resume", str(store.path), "--turns", "5", "--num-ctx", "600"])
-            with patch("alterecho.cli.CodexAdapter") as codex, patch("alterecho.cli.OllamaAdapter") as ollama:
+            with patch("alterecho.profile_runtime.CodexAdapter") as codex, patch("alterecho.profile_runtime.OllamaAdapter") as ollama:
                 with self.assertRaises(BridgeError):
                     await execute(args, SilentUI())
                 codex.assert_not_called()

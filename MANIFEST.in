@@ -1,0 +1,9 @@
+include README.md ARCHITETTURA.md config.example.toml
+recursive-include alterecho/static *
+recursive-include alterecho/exporters/templates *
+recursive-include web/src *.svelte *.ts *.css
+include web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json web/index.html
+recursive-include deploy *
+recursive-include tests *.py
+recursive-include docs *.md
+include Dockerfile .dockerignore compose.yaml

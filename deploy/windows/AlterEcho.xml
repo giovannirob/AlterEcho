@@ -1,0 +1,19 @@
+<!-- WinSW service definition. Install only after reviewing paths/account/ACLs. -->
+<service>
+  <id>AlterEcho</id><name>AlterEcho Server</name>
+  <description>AlterEcho headless HTTP service</description>
+  <executable>C:\ProgramData\AlterEcho\venv\Scripts\python.exe</executable>
+  <arguments>-m alterecho serve</arguments>
+  <workingdirectory>C:\ProgramData\AlterEcho</workingdirectory>
+  <env name="ALTERECHO_HOME" value="C:\ProgramData\AlterEcho\state"/>
+  <env name="CODEX_HOME" value="C:\ProgramData\AlterEcho\codex"/>
+  <env name="PATH" value="C:\Program Files\nodejs;%PATH%"/>
+  <logpath>C:\ProgramData\AlterEcho\logs</logpath>
+  <log mode="roll"/>
+  <startmode>Automatic</startmode>
+  <serviceaccount>
+    <username>NT AUTHORITY\LocalService</username>
+  </serviceaccount>
+  <stoptimeout>45sec</stoptimeout>
+  <onfailure action="restart" delay="10 sec"/>
+</service>

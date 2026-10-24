@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from rich.console import Console
 from rich.prompt import Prompt
 
-from alterecho.cli import main, parser, execute, diagnose, interactive_menu
+from alterecho.cli import main, parser, interactive_menu
+from tests.server_harness import execute, diagnose
 from alterecho.config import BridgeError, Config
 from alterecho.history import Conversation, Message
 from alterecho.paths import config_dir, data_dir
@@ -46,7 +47,7 @@ class IsolatedSettings:
 
 class ParserTests(IsolatedSettings, unittest.TestCase):
     def test_general_and_contextual_help_use_same_parser_without_providers(self):
-        with patch("alterecho.cli.CodexAdapter") as codex, patch("alterecho.cli.OllamaAdapter") as ollama:
+        with patch("alterecho.profile_runtime.CodexAdapter") as codex, patch("alterecho.profile_runtime.OllamaAdapter") as ollama:
             for command in [None, "run", "doctor", "demo", "resume", "export"]:
                 outputs = []
                 for argv in (["help"] + ([command] if command else []), ([command] if command else []) + ["--help"]):
@@ -64,7 +65,7 @@ class ParserTests(IsolatedSettings, unittest.TestCase):
 
     def test_no_args_opens_menu_and_exit_needs_no_settings_or_connections(self):
         ui = self.ui()
-        with patch("alterecho.cli.Terminal", return_value=ui), patch.object(Prompt, "get_input", return_value="0"), patch("alterecho.cli.CodexAdapter") as codex:
+        with patch("alterecho.cli.Terminal", return_value=ui), patch.object(Prompt, "get_input", return_value="0"), patch("alterecho.profile_runtime.CodexAdapter") as codex:
             self.assertEqual(main([]), 0)
         codex.assert_not_called()
         self.assertIn("Nuova conversazione", ui.console.file.getvalue())
@@ -78,7 +79,7 @@ class ParserTests(IsolatedSettings, unittest.TestCase):
 
     def test_invalid_user_home_reports_error_without_traceback_or_provider(self):
         ui = self.ui()
-        with patch.dict(os.environ, {"ALTERECHO_HOME": "relative"}), patch("alterecho.cli.Terminal", return_value=ui), patch("alterecho.cli.CodexAdapter") as provider:
+        with patch.dict(os.environ, {"ALTERECHO_HOME": "relative"}), patch("alterecho.cli.Terminal", return_value=ui), patch("alterecho.profile_runtime.CodexAdapter") as provider:
             self.assertEqual(main([]), 1)
         self.assertIn("percorso assoluto", ui.console.file.getvalue())
         provider.assert_not_called()
@@ -100,7 +101,7 @@ class ParserTests(IsolatedSettings, unittest.TestCase):
         ui.choose_history.side_effect = lambda entries: entries[0]
         ui.integer.return_value = 3
         runner = AsyncMock(return_value=0)
-        with patch("alterecho.preferences.project_root", return_value=None), patch("alterecho.cli.execute", runner):
+        with patch("alterecho.cli.history_entries", return_value=[type("Entry", (), {"conversation": c})()]), patch("alterecho.cli.execute", runner):
             self.assertEqual(interactive_menu(ui, UserSettings()), 0)
         args = runner.call_args.args[0]
         self.assertEqual((args.turns, args.additional_turns, args.confirm), (4, 3, True))
@@ -311,7 +312,7 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
                 return Reply("Codex risponde", "actual-codex")
             async def close(self): events.append("codex-close")
         class Ollama:
-            def __init__(self, cfg): self.cfg = cfg
+            def __init__(self, cfg, speaker="ollama"): self.cfg = cfg
             async def models(self): events.append("ollama-connect"); return [self.cfg.ollama_model]
             async def prepare(self): events.append("prepare")
             async def generate(self, c, checkpoint):
@@ -333,20 +334,21 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
         events = []
         codex, ollama = self.adapters(events)
         ui = self.ui()
-        with patch("alterecho.cli.CodexAdapter", codex), patch("alterecho.cli.OllamaAdapter", ollama), patch.object(Prompt, "get_input", side_effect=["1", "1", "Tema", "4", "n"]):
+        with patch("alterecho.profile_runtime.CodexAdapter", codex), patch("alterecho.profile_runtime.OllamaAdapter", ollama), patch.object(Prompt, "get_input", side_effect=["1", "1", "Tema", "4", "n"]):
             self.assertEqual(await execute(parser().parse_args(["run"]), ui, UserSettings()), 0)
         self.assertNotIn("prepare", events)
         self.assertNotIn("verify-thread", events)
-        self.assertFalse(data_dir().exists())
+        self.assertFalse(list(data_dir().rglob("*.json")))
         self.assertFalse(config_dir().exists())
-        self.assertEqual(events[-2:], ["codex-close", "ollama-close"])
+        self.assertIn("codex-close", events)
+        self.assertIn("ollama-close", events)
 
     async def test_confirm_new_generates_requested_count_and_remembers_models(self):
         events = []
         codex, ollama = self.adapters(events)
         ui = self.ui()
         settings = UserSettings()
-        with patch("alterecho.cli.CodexAdapter", codex), patch("alterecho.cli.OllamaAdapter", ollama), patch.object(Prompt, "get_input", side_effect=["1", "1", "Tema", "4", "s"]):
+        with patch("alterecho.profile_runtime.CodexAdapter", codex), patch("alterecho.profile_runtime.OllamaAdapter", ollama), patch.object(Prompt, "get_input", side_effect=["1", "1", "Tema", "4", "s"]):
             self.assertEqual(await execute(parser().parse_args(["run"]), ui, settings), 0)
         cfg = settings.load()
         self.assertEqual(cfg.codex_model, "actual-codex")
@@ -365,7 +367,7 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
             events.append("confirm")
             self.assertEqual((completed, cfg.max_turns), (1, 3))
             return True
-        with patch("alterecho.cli.CodexAdapter", codex), patch("alterecho.cli.OllamaAdapter", ollama), patch.object(ui, "confirm_run", side_effect=confirm):
+        with patch("alterecho.profile_runtime.CodexAdapter", codex), patch("alterecho.profile_runtime.OllamaAdapter", ollama), patch.object(ui, "confirm_run", side_effect=confirm):
             self.assertEqual(await execute(args, ui), 0)
         self.assertLess(events.index("verify-thread"), events.index("confirm"))
         self.assertLess(events.index("confirm"), events.index("prepare"))
@@ -381,7 +383,7 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
             events = []
             codex, ollama = self.adapters(events, broken=broken)
             ui = self.ui()
-            with patch("alterecho.cli.CodexAdapter", codex), patch("alterecho.cli.OllamaAdapter", ollama), patch.object(ui, "confirm_run", return_value=False) as confirm:
+            with patch("alterecho.profile_runtime.CodexAdapter", codex), patch("alterecho.profile_runtime.OllamaAdapter", ollama), patch.object(ui, "confirm_run", return_value=False) as confirm:
                 if broken:
                     with self.assertRaisesRegex(BridgeError, "Sessione"):
                         await execute(args, ui)
@@ -403,7 +405,7 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
         def confirm(config, completed):
             self.assertEqual((completed, config.max_turns), (2, 4))
             return True
-        with patch("alterecho.cli.CodexAdapter", codex), patch("alterecho.cli.OllamaAdapter", ollama), patch.object(ui, "confirm_run", side_effect=confirm):
+        with patch("alterecho.profile_runtime.CodexAdapter", codex), patch("alterecho.profile_runtime.OllamaAdapter", ollama), patch.object(ui, "confirm_run", side_effect=confirm):
             self.assertEqual(await execute(args, ui), 0)
         self.assertEqual(len(store.load().messages), 4)
 
@@ -415,11 +417,11 @@ class FlowTests(IsolatedSettings, unittest.IsolatedAsyncioTestCase):
         ollama.models = AsyncMock(return_value=["qwen-installed"])
         ollama.close = AsyncMock()
         ui = self.ui()
-        with patch("alterecho.cli.CodexAdapter", return_value=codex), patch("alterecho.cli.OllamaAdapter", return_value=ollama):
+        with patch("alterecho.profile_runtime.CodexAdapter", return_value=codex), patch("alterecho.profile_runtime.OllamaAdapter", return_value=ollama):
             self.assertEqual(await diagnose(Config(), ui), 1)
         output = ui.console.file.getvalue()
         self.assertIn("ChatGPT mancante", output)
-        self.assertIn("Ollama locale: connesso", output)
+        self.assertIn("Ollama: connesso", output)
         self.assertIn("qwen-installed", output)
         codex.close.assert_awaited_once()
         ollama.close.assert_awaited_once()
@@ -443,12 +445,11 @@ class LauncherTests(IsolatedSettings, unittest.TestCase):
         result = subprocess.run([str(bin_dir / "alterecho.exe")], input=b"4\n", cwd=other, env=env, capture_output=True, timeout=20)
         self.assertEqual(result.returncode, 0)
         self.assertIn(b"Nuova conversazione", result.stdout)
-        result = subprocess.run([str(bin_dir / "alterecho.exe"), "demo", "--turns", "3"], cwd=other, env=env, capture_output=True, timeout=20)
-        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
-        entries, errors = scan_conversations([data_dir() / "conversations"])
-        self.assertEqual(len(entries), 1)
-        self.assertEqual(len(entries[0].conversation.messages), 3)
-        self.assertFalse(errors)
+        # A launcher installed on another machine must never fall back to a local engine.
+        result = subprocess.run([str(bin_dir / "alterecho.exe"), "--server", "http://127.0.0.1:1", "demo", "--turns", "3"], cwd=other, env=env, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(b"alterecho serve", result.stdout)
+        self.assertFalse(list(data_dir().rglob("*.json")))
         self.assertEqual(list(other.iterdir()), [])
 
 

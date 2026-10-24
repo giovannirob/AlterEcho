@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 import ipaddress
 import math
 import tomllib
+import os
 from .paths import data_dir, conversations_dir
 
 
@@ -96,8 +97,14 @@ class Config:
             local = u.hostname == "localhost" or ipaddress.ip_address(u.hostname or "").is_loopback
         except ValueError:
             local = False
-        if u.scheme != "http" or not local or u.username or u.password or u.path not in ("", "/") or u.query or u.fragment:
-            raise BridgeError("Ollama deve usare HTTP su localhost/loopback, senza credenziali o percorsi.")
+        trusted = {h.strip().lower() for h in os.environ.get("ALTERECHO_OLLAMA_HOSTS", "").split(",") if h.strip()}
+        allowed = (local and u.scheme == "http") or (not local and u.hostname in trusted and u.scheme in {"http", "https"})
+        try:
+            port = u.port
+        except ValueError as e:
+            raise BridgeError("Porta Ollama non valida.") from e
+        if not allowed or u.username or u.password or u.path not in ("", "/") or u.query or u.fragment or port == 0:
+            raise BridgeError("Ollama richiede loopback HTTP o un host esplicitamente autorizzato sul server con ALTERECHO_OLLAMA_HOSTS; niente credenziali o percorsi.")
 
     @classmethod
     def load(cls, path):

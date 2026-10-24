@@ -16,7 +16,8 @@ from alterecho.history import Conversation, Message
 from alterecho.integrations import AdapterCatalog, new_profile
 from alterecho.preferences import UserSettings
 from alterecho.adapters.chat_api import ChatAPIAdapter
-from alterecho.cli import execute, parser
+from alterecho.cli import parser
+from tests.server_harness import execute
 from alterecho.storage import Store
 from alterecho.ui import Terminal
 from alterecho.adapters.base import Reply
@@ -233,12 +234,12 @@ class APIAdapterTests(unittest.IsolatedAsyncioTestCase):
 
             ui = MagicMock()
             with patch("alterecho.profile_runtime.build_adapters", side_effect=factory):
-                self.assertEqual(await execute(parser().parse_args(["run", "--non-interactive"]), ui, settings), 0)
+                self.assertEqual(await execute(parser().parse_args(["run", "--non-interactive", "--confirm-paid"]), ui, settings), 0)
                 files = list(Path(cfg.output_dir).rglob("*.json"))
                 self.assertEqual(len(files), 1)
                 store = Store(files[0])
                 before = store.load().to_dict()["messages"]
-                self.assertEqual(await execute(parser().parse_args(["resume", str(store.path), "--turns", "6"]), ui), 0)
+                self.assertEqual(await execute(parser().parse_args(["resume", str(store.path), "--turns", "6", "--confirm-paid"]), ui), 0)
                 saved = store.load()
             self.assertEqual(len(saved.messages), 6)
             self.assertEqual(saved.to_dict()["messages"][:4], before)

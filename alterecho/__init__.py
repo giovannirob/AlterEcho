@@ -1,2 +1,2 @@
-"""AlterEcho: solo inoltro di messaggi, nessuna API OpenAI diretta."""
-__version__ = "0.3.0"
+"""AlterEcho: one headless server, HTTP CLI and browser clients."""
+__version__ = "1.0.0"

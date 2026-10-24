@@ -6,3 +6,10 @@ outputs/
 *.py[cod]
 dist/
 build/
+web/node_modules/
+.test-*.log
+.runtime-test/
+*.spec.bak
+*.bak
+.env
+secrets/

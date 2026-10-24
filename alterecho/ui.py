@@ -39,7 +39,7 @@ class Terminal:
 
     def waiting(self, speaker, count, total):
         status = "simulazione locale" if self.mock else "connessioni verificate"
-        self.say(f"[{count}/{total}] {self.labels.get(speaker, speaker)} sta rispondendo… · {status} · Ctrl+C per fermare")
+        self.say(f"[{count}/{total}] {self.labels.get(speaker, speaker)} sta rispondendo… · {status} · Ctrl+C scollega il client")
 
     def message(self, m, count, total):
         style = "cyan" if m.speaker == "codex" else "green"
@@ -239,7 +239,7 @@ class Terminal:
             if choice == "10":
                 self.adapter_settings(preferences)
                 continue
-            candidate = Config(**cfg.to_dict())
+            candidate = type(cfg)(**cfg.to_dict())
             try:
                 if choice == "1":
                     modes = {"free": "Libera", "debate": "Dibattito", "blind": "Esperimento cieco"}
@@ -256,6 +256,11 @@ class Terminal:
                 elif choice == "3":
                     self.say("Il supporto del ragionamento viene verificato con il catalogo del modello scelto.")
                     candidate.codex_effort = self.select("Ragionamento Codex", ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"], cfg.codex_effort)
+                    if getattr(preferences, "remote", False):
+                        self.say("Eseguibile, percorsi e autenticazione Codex si configurano direttamente sul server.")
+                        candidate.validate()
+                        preferences.save(candidate)
+                        continue
                     candidate.codex_binary = self.ask("Eseguibile Codex (nome o percorso)", default=cfg.codex_binary)
                     if ("/" in candidate.codex_binary or "\\" in candidate.codex_binary) and not Path(candidate.codex_binary).expanduser().is_absolute():
                         raise BridgeError("Per l'eseguibile Codex usa un nome nel PATH o un percorso assoluto.")
@@ -265,7 +270,10 @@ class Terminal:
                     if candidate.codex_home and not Path(candidate.codex_home).expanduser().is_absolute():
                         raise BridgeError("codex_home deve essere un percorso assoluto.")
                 elif choice == "4":
-                    candidate.ollama_url = self.ask("URL Ollama locale", default=cfg.ollama_url)
+                    if getattr(preferences, "remote", False):
+                        self.say("Modifica l'endpoint in Adapter e integrazioni; gli host di rete devono essere autorizzati sul server.")
+                    else:
+                        candidate.ollama_url = self.ask("URL Ollama locale", default=cfg.ollama_url)
                     candidate.num_ctx = self.integer("Contesto in token (più contesto usa più memoria)", cfg.num_ctx, 1)
                     candidate.num_predict = self.integer("Massimo token per risposta", cfg.num_predict, 1)
                     candidate.temperature = self.decimal("Temperature", cfg.temperature)
@@ -289,6 +297,9 @@ class Terminal:
                     else:
                         candidate.first = self.select("Chi inizia", ["codex", "ollama"], cfg.first)
                 elif choice == "7":
+                    if getattr(preferences, "remote", False):
+                        self.say("La cartella operativa si configura soltanto sul server (config.json / ALTERECHO_HOME).")
+                        continue
                     value = Path(self.ask("Cartella salvataggi (percorso assoluto)", default=cfg.output_dir)).expanduser()
                     if not value.is_absolute():
                         raise BridgeError("Inserisci un percorso assoluto per avviare AlterEcho da qualsiasi cartella.")
@@ -305,7 +316,7 @@ class Terminal:
 
     def adapter_settings(self, preferences):
         from .integrations import AdapterCatalog, PROVIDERS, new_profile, validate_profile
-        catalog = AdapterCatalog()
+        catalog = getattr(preferences, "catalog", None) or AdapterCatalog()
         while True:
             cfg = preferences.load()
             profiles = catalog.load(cfg)

@@ -1,0 +1,26 @@
+[Unit]
+Description=AlterEcho headless server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alterecho
+Group=alterecho
+WorkingDirectory=/var/lib/alterecho
+Environment=ALTERECHO_HOME=/var/lib/alterecho
+Environment=CODEX_HOME=/var/lib/alterecho-codex
+EnvironmentFile=-/etc/alterecho/server.env
+ExecStart=/opt/alterecho/venv/bin/alterecho serve
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/alterecho /var/lib/alterecho-codex
+
+[Install]
+WantedBy=multi-user.target

@@ -78,6 +78,8 @@ class ChatAPIAdapter:
                                 parts.append(part)
                                 conversation.partial = {"speaker": self.speaker, "model": returned_model,
                                                         "text": "".join(parts), "timestamp": now()}
+                                if hasattr(checkpoint, "delta"):
+                                    checkpoint.delta(self.speaker, returned_model, part)
                                 if time.monotonic() - last_checkpoint > .5:
                                     checkpoint()
                                     last_checkpoint = time.monotonic()

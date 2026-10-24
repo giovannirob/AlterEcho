@@ -155,11 +155,12 @@ class HtmlExportTests(unittest.TestCase):
             preferences.load.return_value = Config()
             ui.main_menu.side_effect = ["4", "6"]
             ui.choose_history.side_effect = lambda entries, **kwargs: entries[0]
-            with patch("alterecho.cli.history_directories", return_value=[tmp]), patch("alterecho.cli.webbrowser.open", return_value=True) as browser:
+            with patch("alterecho.cli.history_entries", return_value=[type("Entry", (), {"conversation": conversation})()]), patch("alterecho.cli.webbrowser.open", return_value=True) as browser:
                 self.assertEqual(interactive_menu(ui, preferences), 0)
-                browser.assert_called_once_with(store.path.with_suffix(".html").resolve().as_uri())
+                browser.assert_called_once()
+                self.assertIn("/#conversation=" + conversation.id, browser.call_args.args[0])
             ui.confirm.assert_not_called()
-            self.assertNotEqual(store.path.with_suffix(".html").read_text(encoding="utf-8"), "outdated")
+            self.assertEqual(store.path.with_suffix(".html").read_text(encoding="utf-8"), "outdated") # browser opens the server; export remains an explicit download
             self.assertEqual(store.path.read_bytes(), original)
 
     def test_syntax_styles_do_not_override_message_backgrounds(self):

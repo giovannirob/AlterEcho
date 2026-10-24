@@ -44,6 +44,8 @@ class AdapterCatalog:
     def load(self, cfg=None):
         if not self.path.exists():
             cfg = cfg or Config()
+            if cfg.adapter_pair:
+                return list({p["id"]: dict(p) for p in cfg.adapter_pair.values()}.values())
             a, b = new_profile("codex", "Codex"), new_profile("ollama", "Ollama")
             a.update(id="codex-default", model=cfg.codex_model, binary=cfg.codex_binary)
             b.update(id="ollama-default", model=cfg.ollama_model, url=cfg.ollama_url)
