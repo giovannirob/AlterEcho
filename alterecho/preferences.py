@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from .config import Config, BridgeError
-from .paths import config_dir, data_dir, project_root
+from .paths import config_dir, data_dir, conversations_dir, project_root
 from .storage import atomic_write
 
 
@@ -19,6 +19,9 @@ class UserSettings:
                     raise ValueError("versione non supportata")
                 cfg = Config(**saved["config"])
                 cfg.resolve_paths(self.path.parent)
+                # Upgrade the former default without overriding custom folders.
+                if Path(cfg.output_dir).resolve() == (data_dir() / "conversations").resolve():
+                    cfg.output_dir = str(conversations_dir())
                 cfg.validate()
                 return cfg
             except (BridgeError, OSError, ValueError, TypeError, KeyError) as e:
@@ -56,7 +59,7 @@ class UserSettings:
 
 
 def history_directories(cfg, preferences=None):
-    roots = [Path(cfg.output_dir), data_dir() / "conversations"]
+    roots = [Path(cfg.output_dir), conversations_dir(), data_dir() / "conversations"]
     if preferences:
         roots.extend(Path(p) for p in preferences.known_history_dirs())
     project = project_root()

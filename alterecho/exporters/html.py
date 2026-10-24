@@ -13,6 +13,7 @@ from pygments.lexers import TextLexer, get_lexer_by_name
 from pygments.util import ClassNotFound
 
 from ..stats import summarize
+from ..history import participant_label
 
 
 _MARKDOWN = MarkdownIt("default", {"html": False, "linkify": False, "typographer": False})
@@ -83,7 +84,7 @@ def _duration(seconds):
     return f"{seconds:.2f} s"
 
 
-def _message_markup(message, index):
+def _message_markup(message, index, config=None):
     speaker = str(getattr(message, "speaker", ""))
     model = str(getattr(message, "model", "Modello"))
     content = _MARKDOWN.render(str(getattr(message, "text", "")))
@@ -104,7 +105,7 @@ def _message_markup(message, index):
     return (
         f'<article class="message {side}" data-speaker="{escape(speaker, quote=True)}">'
         '<div class="message-heading">'
-        f'<div><span class="speaker-label">{escape(speaker.title() or "Interlocutore")}</span>'
+        f'<div><span class="speaker-label">{escape(participant_label(config or {}, speaker))}</span>'
         f'<span class="model-name">{escape(model)}</span></div>'
         f'<button class="copy-message" type="button" aria-label="Copia messaggio {index}">Copia</button>'
         '</div>'
@@ -136,7 +137,7 @@ def _summary(conversation):
         measured_seconds += sum(seconds for _, seconds in paired)
         token_sum = in_total + out_total if in_total is not None and out_total is not None else None
         rows.append(
-            '<tr><th scope="row">' + escape(speaker.title()) + '</th>'
+            '<tr><th scope="row">' + escape(participant_label(conversation.config, speaker)) + '</th>'
             f'<td>{len(messages)}</td><td>{_format_number(in_total) if in_total is not None else "Non disponibile"}</td>'
             f'<td>{_format_number(out_total) if out_total is not None else "Non disponibile"}</td>'
             f'<td>{_format_number(token_sum) if token_sum is not None else "Non disponibile"}</td></tr>'
@@ -159,7 +160,7 @@ def _summary(conversation):
 def render_html(conversation):
     """Render a self-contained, offline HTML page from canonical history data."""
     cfg = conversation.config
-    messages = "\n".join(_message_markup(message, index) for index, message in enumerate(conversation.messages, 1))
+    messages = "\n".join(_message_markup(message, index, cfg) for index, message in enumerate(conversation.messages, 1))
     if conversation.partial:
         partial = _MARKDOWN.render(str(conversation.partial.get("text", "")))
         messages += f'<article class="message partial"><div class="speaker-label">Risposta parziale · non inoltrata</div><div class="message-content">{partial}</div></article>'
@@ -182,6 +183,8 @@ def render_html(conversation):
         "{{TOPIC}}": escape(str(cfg.get("topic", "Senza argomento"))),
         "{{CODEX_MODEL}}": escape(str(cfg.get("codex_model", "Non disponibile"))),
         "{{OLLAMA_MODEL}}": escape(str(cfg.get("ollama_model", "Non disponibile"))),
+        "{{PARTICIPANT_A}}": escape(participant_label(cfg, "codex")),
+        "{{PARTICIPANT_B}}": escape(participant_label(cfg, "ollama")),
         "{{CREATED}}": escape(_date(conversation.created_at)),
         "{{MODE}}": escape(roles.get(cfg.get("mode"), str(cfg.get("mode", "Non disponibile")))),
         "{{MESSAGE_COUNT}}": str(len(conversation.messages)),

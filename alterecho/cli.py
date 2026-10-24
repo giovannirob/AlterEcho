@@ -5,7 +5,7 @@ import sys
 import webbrowser
 
 from .config import Config, BridgeError
-from .history import Conversation
+from .history import Conversation, participant_label
 from .storage import Store, scan_conversations
 from .preferences import UserSettings, history_directories, resumed_config
 from .coordinator import Coordinator
@@ -32,7 +32,7 @@ class ItalianParser(argparse.ArgumentParser):
 
 
 def parser():
-    p = ItalianParser(prog="alterecho", description="AlterEcho — dialogo automatico Codex ↔ Ollama con autenticazione ChatGPT, senza API key OpenAI.",
+    p = ItalianParser(prog="alterecho", description="AlterEcho — dialoghi autonomi con Codex/Ollama e adapter API opzionali OpenAI/OpenRouter.",
                       formatter_class=argparse.RawDescriptionHelpFormatter,
     epilog="Per iniziare: alterecho\nIl menu permette di avviare, riprendere, esportare e configurare i dialoghi.\nImpostazioni e salvataggi sono personali, indipendenti dalla cartella corrente.\nJSON, Markdown, TXT e HTML vengono salvati automaticamente. Ctrl+C conserva lo storico.\nPer le opzioni avanzate: alterecho help COMANDO (oppure COMANDO --help).\nDocumentazione: README.md. doctor non genera; demo usa soltanto simulazioni.")
     sub = p.add_subparsers(dest="action", title="Comandi")
@@ -76,6 +76,9 @@ class DemoAdapter:
 
 async def diagnose(cfg, ui):
     """Independent checks: a failed provider must not hide the other one's status."""
+    if cfg.adapter_pair:
+        from .profile_runtime import diagnose_profiles
+        return await diagnose_profiles(cfg, ui)
     codex, ollama = CodexAdapter(cfg), OllamaAdapter(cfg)
     try:
         results = await asyncio.gather(codex.start(), ollama.models(), return_exceptions=True)
@@ -97,6 +100,7 @@ async def diagnose(cfg, ui):
 async def execute(args, ui, preferences=None):
     action = args.action
     ui.mock = action == "demo"
+    ui.labels = {}
     if action == "export":
         store = Store(args.path)
         conversation = store.load()
@@ -126,6 +130,9 @@ async def execute(args, ui, preferences=None):
         store = None
     if action == "doctor":
         return await diagnose(cfg, ui)
+    if action in {"run", "resume"} and cfg.adapter_pair:
+        from .profile_runtime import execute_profiles
+        return await execute_profiles(args, ui, preferences, cfg, conversation, store)
     if action == "demo":
         cfg.codex_model = "mock-codex"
         conversation = Conversation(cfg.to_dict())
@@ -190,6 +197,8 @@ async def execute(args, ui, preferences=None):
     finally:
         try:
             await asyncio.gather(codex.close(), ollama.close())
+            if getattr(ollama, "memory_notice", None):
+                ui.say(ollama.memory_notice)
         finally:
             if persist and store and conversation:
                 store.save(conversation)
@@ -227,7 +236,7 @@ def interactive_menu(ui, preferences):
                 entry = ui.choose_history(entries, action="visualizzare in HTML")
                 if entry is not None:
                     c = entry.conversation
-                    ui.say(f"{c.config.get('topic', '(senza argomento)')} · {len(c.messages)} messaggi · {c.status}\nCodex: {c.config.get('codex_model', 'Non disponibile')} · Ollama: {c.config.get('ollama_model', 'Non disponibile')}\nFile JSON: {entry.path}")
+                    ui.say(f"{c.config.get('topic', '(senza argomento)')} · {len(c.messages)} messaggi · {c.status}\n{participant_label(c.config, 'codex')}: {c.config.get('codex_model', 'Non disponibile')} · {participant_label(c.config, 'ollama')}: {c.config.get('ollama_model', 'Non disponibile')}\nFile JSON: {entry.path}")
                     html_path = Store(entry.path).export(c, formats=["html"])[0]
                     ui.say(f"HTML aggiornato: {html_path.resolve()}")
                     if webbrowser.open(html_path.resolve().as_uri()):
@@ -272,7 +281,7 @@ def main(argv=None):
         (p.commands[args.command] if args.command else p).print_help()
         return 0
     ui = Terminal()
-    ui.say("AlterEcho · Codex ↔ Ollama")
+    ui.say("AlterEcho · dialogo autonomo fra modelli")
     try:
         preferences = UserSettings()
         if args.action is None:

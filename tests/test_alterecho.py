@@ -271,7 +271,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reply.text, "ciao è")
             self.assertEqual(reply.usage["tokens_per_second"], 4)
             self.assertEqual(seen[0]["messages"][-1], {"role": "user", "content": "testo esatto"})
-            self.assertEqual(seen[0]["keep_alive"], 0)
+            self.assertEqual(seen[0]["keep_alive"], -1)
             self.assertFalse(seen[0]["truncate"])
             self.assertFalse(seen[0]["shift"])
             self.assertNotIn("tools", seen[0])
@@ -327,7 +327,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(c.partial["text"], "parziale")
             finally: await adapter.close()
 
-    async def test_unload_other_models(self):
+    async def test_preserve_other_models(self):
         cfg = Config()
         seen = []
         def handle(req):
@@ -338,7 +338,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         a = OllamaAdapter(cfg, httpx.MockTransport(handle))
         try:
             await a.prepare()
-            self.assertIn(("/api/generate", {"model": "other-model", "keep_alive": 0}), seen)
+            self.assertFalse(any(path == "/api/generate" for path, _ in seen))
         finally: await a.close()
 
     async def test_codex_stdio_persistent_json_protocol(self):

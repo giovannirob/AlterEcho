@@ -84,12 +84,17 @@ def initial_input():
     return "Apri il dialogo sull'argomento assegnato con un messaggio per il tuo interlocutore."
 
 
-def ollama_history(config: Config, conversation: Conversation):
-    result = [{"role": "system", "content": instructions(config, "ollama")}]
-    if config.first == "ollama":
+def participant_label(config, speaker):
+    values = config if isinstance(config, dict) else config.to_dict()
+    return values.get("adapter_pair", {}).get(speaker, {}).get("name", speaker.title())
+
+
+def ollama_history(config: Config, conversation: Conversation, speaker="ollama"):
+    result = [{"role": "system", "content": instructions(config, speaker)}]
+    if config.first == speaker:
         result.append({"role": "user", "content": initial_input()})
     for message in conversation.messages:
-        result.append({"role": "assistant" if message.speaker == "ollama" else "user", "content": message.text})
+        result.append({"role": "assistant" if message.speaker == speaker else "user", "content": message.text})
     return result
 
 

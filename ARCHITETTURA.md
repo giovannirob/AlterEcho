@@ -30,6 +30,9 @@ flowchart LR
 | `alterecho/adapters/base.py` | Protocollo comune `Adapter` e risultato `Reply` |
 | `alterecho/adapters/codex.py` | Processo app-server, JSON RPC, thread e autenticazione ChatGPT |
 | `alterecho/adapters/ollama.py` | API HTTP locali, streaming e gestione dei modelli residenti |
+| `alterecho/adapters/chat_api.py` | API OpenAI/OpenRouter, cataloghi e streaming SSE senza strumenti |
+| `alterecho/integrations.py` | Catalogo di profili adapter, validazione e riferimenti alle variabili delle chiavi |
+| `alterecho/profile_runtime.py` | Preparazione e ripresa dei dialoghi con coppie di profili esplicite |
 | `alterecho/storage.py` | JSON atomico, lettura, esportazione ed eliminazione degli storici |
 | `alterecho/exporters/html.py` | Rendering Markdown sicuro e generazione della pagina HTML autonoma |
 | `alterecho/exporters/templates/` | Template HTML, CSS e JavaScript incorporati nel file esportato |
@@ -38,6 +41,14 @@ flowchart LR
 | `tests/` | Mock degli adapter, test della CLI e server RPC simulato |
 
 Gli adapter condividono `generate(conversation, checkpoint) -> Reply` e `close()`. `Reply` contiene testo, modello e usage disponibili. Connessione e preparazione sono specifiche del provider. Per aggiungere un provider occorre implementare il protocollo e integrare il suo avvio nella CLI.
+
+Il menu mantiene **Nuova conversazione** al primo livello; ripresa, eliminazione e HTML sono nel sottomenu **Archivio conversazioni**. Le impostazioni sono raggruppate in **Conversazione**, **Modelli e adapter**, **Esecuzione e salvataggi**, **Diagnostica e manutenzione**. Dopo ogni operazione resta aperta la sezione corrente; **0** torna al livello precedente. Il gestore di profili Codex/Ollama/OpenAI/OpenRouter si trova in **Modelli e adapter → Adapter e integrazioni**. Un profilo seleziona un adapter implementato; registrare un endpoint non genera automaticamente un nuovo backend.
+
+`adapters.json` ha schema 1 e conserva soltanto ID, nome, provider, modello, eseguibile, URL e nome della variabile d'ambiente. `Config.adapter_pair`, vuoto nelle configurazioni precedenti, contiene la copia dei profili selezionati. Le chiavi interne `codex` e `ollama` restano gli slot A/B per compatibilità con gli storici; il nome visualizzato e i modelli provengono dai profili. I riepiloghi e gli export riportano gli interlocutori effettivi.
+
+Il percorso tradizionale resta disponibile se `adapter_pair` è vuoto. Con profili espliciti, il runtime costruisce solo gli adapter scelti e verifica i cataloghi. Codex resta in A; è consentito un solo modello locale Ollama. Le riprese usano le configurazioni registrate nella chat, non il catalogo corrente, e verificano il thread se presente. I provider HTTP ricostruiscono la memoria dalla cronologia canonica; un turno parziale non entra come risposta completa.
+
+Le API remote usano gli endpoint HTTPS ufficiali, `/models` e `/chat/completions`, con redirect e proxy ambientali disabilitati. Lo streaming SSE conserva i parziali e legge gli usage senza stime; errori, limiti e richieste di strumenti fermano il ciclo. Le chiavi sono lette solo dall'ambiente al momento della richiesta e non passate al processo Codex. I parametri di ragionamento non sono inviati né modificati per le API; `api_max_output_tokens` limita la risposta con il campo previsto dal provider. Non vengono caricati plugin arbitrari né avviati server MCP; MCP è distinto dall'accesso ai provider API. Claude Code richiede un adapter dedicato non incluso qui.
 
 ## Ciclo di conversazione
 
@@ -75,7 +86,11 @@ L'account viene controllato con `account/read`; `model/list` viene letto con pag
 
 Ogni richiesta di chat contiene una sola istruzione di sistema e la cronologia completa: le risposte Ollama hanno ruolo `assistant`, quelle Codex ruolo `user`. Se Ollama comincia, viene incluso anche l'invito iniziale. La memoria viene ricostruita dallo storico anche quando il modello è scaricato dalla memoria.
 
-Prima del dialogo, l'adapter usa `/api/ps` per rilevare gli altri modelli residenti e ne richiede lo scaricamento con `keep_alive=0` tramite `/api/generate`. La chat usa `think=false` e `keep_alive=0`: questo riduce l'occupazione, ma può richiedere ricaricamenti tra i turni. Altre applicazioni Ollama possono interferire con l'uso della memoria.
+Prima del dialogo, l'adapter acquisisce una sola fotografia di `/api/ps`, senza scaricare modelli altrui. `/api/chat` usa `think=false` invariato e `keep_alive=ollama_keep_alive`, predefinito `-1`. Sono accettati i valori interi `-1` e `0` e le stringhe `"5m"` e `"10m"`: un sottoinsieme esplicito dei formati ufficiali Ollama (secondi numerici e durate). Non c'è polling a ogni turno. Memoria insufficiente, altri client o il runtime possono ancora causare scaricamenti e ricaricamenti.
+
+`ollama_unload_on_exit=true` richiede una pulizia finale soltanto se sicura. `close()` è idempotente, chiude sempre il client HTTP e non interviene sui modelli preesistenti. Dopo una generazione, se necessario, esegue un solo controllo finale `/api/ps` con timeout massimo di 5 secondi. Né l'assenza iniziale del modello né `expires_at` dimostrano l'uso esclusivo: l'API non espone lease, conteggi o identità dei client. Perciò, anche se caricato da AlterEcho, il modello condiviso viene lasciato residente e la CLI espone il motivo. L'opzione `false` disabilita anche questa verifica finale. Non esiste un percorso di scaricamento forzato automatico mascherato da controllo di proprietà. Errori di chiusura non annullano il salvataggio, e Ctrl+C passa dalla stessa chiusura ordinata; un arresto forzato del processo non la garantisce.
+
+`load_duration` ed `eval_duration` (nanosecondi) vengono convertiti in `usage.load_seconds` e `usage.generation_seconds` per i nuovi messaggi. Sono visibili nel terminale e nel JSON, senza cambiare gli export HTML. Un valore di caricamento ridotto può includere overhead e non dimostra l'assenza assoluta di lavoro del runtime. Riferimenti: [chat](https://docs.ollama.com/api/chat), [modelli residenti](https://docs.ollama.com/api/ps), [keep_alive](https://docs.ollama.com/faq).
 
 ## Persistenza e ripresa
 
@@ -122,6 +137,7 @@ Se il profilo manca, viene letto l'eventuale `config.toml` del checkout. Il prim
 | `codex_model`, `codex_effort` | Modello e ragionamento Codex |
 | `codex_binary`, `codex_home` | Eseguibile e directory Codex esistente |
 | `ollama_model`, `ollama_url` | Modello e endpoint HTTP loopback |
+| `ollama_keep_alive`, `ollama_unload_on_exit` | Permanenza tra i turni e richiesta prudente di pulizia finale |
 | `num_ctx`, `num_predict`, `temperature` | Contesto, massimo token di risposta e sampling Ollama |
 | `ollama_options` | Opzioni aggiuntive, come `top_p` o `seed` |
 | `output_dir`, `codex_work_dir` | Salvataggi e directory di lavoro Codex |
@@ -130,7 +146,7 @@ I valori iniziali includono contesto Ollama di 4096 token, risposte fino a 512 t
 
 Codex non espone tramite questa implementazione una temperature configurabile o un limite rigido universale dei token di risposta. Le istruzioni richiedono risposte brevi.
 
-Su Windows, configurazione e dati usano rispettivamente `%APPDATA%/AlterEcho` e `%LOCALAPPDATA%/AlterEcho`. Su Linux si rispettano `XDG_CONFIG_HOME` e `XDG_DATA_HOME`, con fallback a `~/.config/alterecho` e `~/.local/share/alterecho`.
+Su Windows configurazione e dati tecnici usano rispettivamente `%APPDATA%/AlterEcho` e `%LOCALAPPDATA%/AlterEcho`; su Linux `XDG_CONFIG_HOME` e `XDG_DATA_HOME`, con fallback a `~/.config/alterecho` e `~/.local/share/alterecho`. Le conversazioni nuove vanno invece in `Documenti/AlterEcho/conversations`: Windows risolve la cartella nativa con `SHGetFolderPathW(CSIDL_PERSONAL)` rispettando reindirizzamenti, Linux legge `XDG_DOCUMENTS_DIR` da `user-dirs.dirs` senza eseguire shell, macOS e i fallback usano `~/Documents`. Le preferenze che contenevano il vecchio percorso dati predefinito vengono adattate in memoria; percorsi personalizzati e TOML espliciti restano validi. La ricerca include le directory attuale, Documenti e dati precedenti. I file storici non vengono riscritti dal caricamento della configurazione.
 
 `ALTERECHO_HOME`, se impostato, deve essere assoluto e ospita `config/config.json` e `data/`. La directory di lavoro predefinita è `data_dir/work/codex-dialogue`.
 

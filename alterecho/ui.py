@@ -11,6 +11,7 @@ from rich.prompt import Prompt
 
 from .stats import summarize
 from .config import Config, BridgeError
+from .history import participant_label
 
 
 class ItalianPrompt(Prompt):
@@ -31,13 +32,14 @@ class Terminal:
                 stream.reconfigure(encoding="utf-8", errors="replace")
         self.console = Console(highlight=False)
         self.mock = False
+        self.labels = {}
 
     def say(self, text):
         self.console.print(Text(safe_text(text)))
 
     def waiting(self, speaker, count, total):
         status = "simulazione locale" if self.mock else "connessioni verificate"
-        self.say(f"[{count}/{total}] {speaker} sta rispondendo… · {status} · Ctrl+C per fermare")
+        self.say(f"[{count}/{total}] {self.labels.get(speaker, speaker)} sta rispondendo… · {status} · Ctrl+C per fermare")
 
     def message(self, m, count, total):
         style = "cyan" if m.speaker == "codex" else "green"
@@ -49,7 +51,11 @@ class Terminal:
             details += f" · output {usage['output_tokens']} token"
         if usage.get("tokens_per_second") is not None:
             details += f" · {usage['tokens_per_second']:.1f} token/s di generazione"
-        self.console.print(Panel(Text(safe_text(m.text)), title=Text(safe_text(f"{count}/{total} · {m.speaker} · {m.model}")), subtitle=Text(details), border_style=style))
+        if usage.get("load_seconds") is not None:
+            details += f" · caricamento {usage['load_seconds']:.3f}s"
+        if usage.get("generation_seconds") is not None:
+            details += f" · generazione {usage['generation_seconds']:.3f}s"
+        self.console.print(Panel(Text(safe_text(m.text)), title=Text(safe_text(f"{count}/{total} · {self.labels.get(m.speaker, m.speaker)} · {m.model}")), subtitle=Text(details), border_style=style))
 
     def error(self, text):
         self.console.print(Panel(Text(safe_text(text)), title="Arresto", border_style="red"))
@@ -59,7 +65,7 @@ class Terminal:
         states = {"ready": "pronta", "running": "in corso", "completed": "completata", "stopped": "arrestata", "interrupted": "interrotta", "failed": "errore"}
         self.say(f"Stato: {states.get(conversation.status, conversation.status)} · messaggi: {stats['messages']} · generazione: {stats['seconds']:.2f}s")
         for speaker, values in stats["speakers"].items():
-            self.say(f"{speaker}: {values['messages']} messaggi · token input/output rilevati {values['input_tokens']}/{values['output_tokens']} ({values['usage_samples']} campioni)")
+            self.say(f"{participant_label(conversation.config, speaker)}: {values['messages']} messaggi · token input/output rilevati {values['input_tokens']}/{values['output_tokens']} ({values['usage_samples']} campioni)")
         self.say(f"Salvato: {path.resolve()} (+ .md, .txt e .html)")
 
     def select(self, label, values, default):
@@ -129,18 +135,57 @@ class Terminal:
                 f"Messaggi: {cfg.max_turns}" + (f" ({completed} salvati + {cfg.max_turns - completed} nuovi)" if completed else "") +
                 f"\nRagionamento Codex: {cfg.codex_effort}\nOllama: contesto {cfg.num_ctx}, risposta {cfg.num_predict} token\n"
                 f"Ritardo: {cfg.delay}s · timeout: {cfg.timeout}s\nSalvataggi: {cfg.output_dir}")
+        text += f"\nOllama keep_alive: {cfg.ollama_keep_alive} · scaricamento finale prudente: {'Sì' if cfg.ollama_unload_on_exit else 'No'}"
+        if cfg.adapter_pair:
+            text = (f"A · {participant_label(cfg, 'codex')}: {cfg.codex_model}\n"
+                    f"B · {participant_label(cfg, 'ollama')}: {cfg.ollama_model}\n"
+                    f"Argomento: {cfg.topic}\nModalità: {modes[cfg.mode]} · inizia: {participant_label(cfg, cfg.first)}\n"
+                    f"Messaggi totali: {cfg.max_turns} · già salvati: {completed}\nSalvataggi: {cfg.output_dir}\nTimeout: {cfg.timeout}s")
+            if any(p['provider'] in {'openai', 'openrouter'} for p in cfg.adapter_pair.values()):
+                text += "\nProvider API selezionato: le generazioni usano il relativo account API e possono avere costi a consumo."
         for speaker in ("codex", "ollama"):
             if cfg.roles[speaker]:
-                text += f"\nPersonalità {speaker}: {cfg.roles[speaker]}"
+                text += f"\nPersonalità {participant_label(cfg, speaker)}: {cfg.roles[speaker]}"
             if cfg.mode == "debate":
-                text += f"\nPosizione {speaker}: {cfg.positions[speaker]}"
+                text += f"\nPosizione {participant_label(cfg, speaker)}: {cfg.positions[speaker]}"
         self.console.print(Panel(Text(safe_text(text)), title="Riprendi conversazione" if completed else "Nuova conversazione", border_style="cyan"))
         return self.confirm("Avviare?")
 
+    def configure_profiles(self, cfg, catalogs):
+        for slot in ("codex", "ollama"):
+            profile = cfg.adapter_pair[slot]
+            if profile['provider'] in {'openai', 'openrouter'}:
+                self.say("Il catalogo API può includere modelli non compatibili con chat; accesso e compatibilità vengono verificati alla prima generazione.")
+            values = [m["model"] for m in catalogs[slot]] if profile["provider"] == "codex" else catalogs[slot]
+            profile["model"] = self.select(profile["name"] + " · modelli disponibili", values, profile["model"])
+            if profile["provider"] == "codex":
+                selected = next(m for m in catalogs[slot] if m["model"] == profile["model"])
+                efforts = [e["reasoningEffort"] for e in selected.get("supportedReasoningEfforts", [])]
+                if efforts and cfg.codex_effort not in efforts:
+                    cfg.codex_effort = selected.get("defaultReasoningEffort", efforts[0])
+                    if cfg.codex_effort not in efforts:
+                        cfg.codex_effort = efforts[0]
+        cfg.codex_model, cfg.ollama_model = cfg.adapter_pair["codex"]["model"], cfg.adapter_pair["ollama"]["model"]
+        cfg.topic = self.ask("Argomento", default=cfg.topic)
+        cfg.max_turns = self.integer("Numero massimo di messaggi totali", cfg.max_turns, minimum=1)
+        cfg.validate()
+        return self.confirm_run(cfg)
+
     def main_menu(self):
-        self.console.print(Panel("ALTERECHO\nDialogo autonomo fra due IA", border_style="cyan"))
-        self.say("1. Nuova conversazione\n2. Riprendi conversazione\n3. Elimina conversazione\n4. Visualizza in HTML\n5. Impostazioni\n6. Esci")
-        return self.ask("Seleziona", choices=["1", "2", "3", "4", "5", "6"], default="1")
+        while True:
+            self.console.print(Panel("ALTERECHO\nDialogo autonomo fra due IA", border_style="cyan"))
+            self.say("1. Nuova conversazione\n2. Archivio conversazioni\n   Riprendi, elimina o visualizza una chat salvata\n3. Impostazioni\n0. Esci")
+            choice = self.ask("Seleziona", choices=["1", "2", "3", "0"], default="1")
+            if choice == "0":
+                return "6"
+            if choice == "1":
+                return "1"
+            if choice == "3":
+                return "5"
+            self.say("ARCHIVIO CONVERSAZIONI\n1. Riprendi conversazione\n2. Elimina conversazione\n3. Visualizza in HTML\n0. Torna al menu principale")
+            action = self.ask("Seleziona", choices=["1", "2", "3", "0"], default="0")
+            if action != "0":
+                return {"1": "2", "2": "3", "3": "4"}[action]
 
     def choose_history(self, entries, action="riprendere"):
         if not entries:
@@ -154,20 +199,45 @@ class Terminal:
                 date = datetime.fromisoformat(c.created_at).astimezone().strftime("%d/%m/%Y %H:%M")
             except ValueError:
                 date = c.created_at
-            self.say(f"{index}. {date} — {c.config['topic']}\n   {c.config['codex_model']} ↔ {c.config['ollama_model']} | {len(c.messages)} messaggi | {states.get(c.status, c.status)}")
+            self.say(f"{index}. {date} — {c.config['topic']}\n   {participant_label(c.config, 'codex')}: {c.config['codex_model']} ↔ {participant_label(c.config, 'ollama')}: {c.config['ollama_model']} | {len(c.messages)} messaggi | {states.get(c.status, c.status)}")
         self.say("0. Torna al menu")
         value = self.ask("Seleziona", choices=[str(i) for i in range(len(entries) + 1)], default="0")
         return entries[int(value) - 1] if value != "0" else None
 
     def settings(self, preferences, diagnostics):
+        groups = {
+            "1": ("Conversazione", [("1", "Modalità"), ("2", "Personalità"), ("6", "Chi inizia")]),
+            "2": ("Modelli e adapter", [("10", "Adapter e integrazioni"), ("3", "Ragionamento e installazione Codex"), ("4", "Parametri Ollama")]),
+            "3": ("Esecuzione e salvataggi", [("5", "Limiti, timeout e ritardo"), ("7", "Cartella salvataggi")]),
+            "4": ("Diagnostica e manutenzione", [("8", "Diagnostica connessioni"), ("9", "Ripristina impostazioni predefinite")]),
+        }
+        section = None
         while True:
             cfg = preferences.load()
-            self.say(f"IMPOSTAZIONI · {preferences.path}\n1. Modalità conversazione\n2. Personalità dei modelli\n3. Ragionamento e installazione Codex\n4. Parametri Ollama\n5. Limiti e timeout\n6. Modello che inizia\n7. Cartella salvataggi\n8. Diagnostica connessioni\n9. Ripristina impostazioni predefinite\n0. Torna al menu")
-            choice = self.ask("Seleziona", choices=[str(i) for i in range(10)], default="0")
-            if choice == "0":
-                return
+            if section is None:
+                self.say(f"IMPOSTAZIONI · {preferences.path}")
+                for number, (title, _) in groups.items():
+                    self.say(f"{number}. {title}")
+                self.say("0. Torna al menu")
+                section = self.ask("Seleziona", choices=["0", *groups], default="0")
+                if section == "0":
+                    return
+                continue
+            title, actions = groups[section]
+            self.say(f"IMPOSTAZIONI → {title}")
+            for number, (_, label) in enumerate(actions, 1):
+                self.say(f"{number}. {label}")
+            self.say("0. Torna alle impostazioni")
+            selected = self.ask("Seleziona", choices=[str(i) for i in range(len(actions) + 1)], default="0")
+            if selected == "0":
+                section = None
+                continue
+            choice = actions[int(selected) - 1][0]
             if choice == "8":
                 diagnostics(cfg)
+                continue
+            if choice == "10":
+                self.adapter_settings(preferences)
                 continue
             candidate = Config(**cfg.to_dict())
             try:
@@ -181,7 +251,7 @@ class Terminal:
                 elif choice == "2":
                     self.say("Invio conserva il valore; '-' cancella la personalità.")
                     for speaker in ("codex", "ollama"):
-                        value = self.ask(f"Personalità {speaker}", default=cfg.roles[speaker])
+                        value = self.ask(f"Personalità {participant_label(cfg, speaker)}", default=cfg.roles[speaker])
                         candidate.roles[speaker] = "" if value == "-" else value
                 elif choice == "3":
                     self.say("Il supporto del ragionamento viene verificato con il catalogo del modello scelto.")
@@ -201,12 +271,23 @@ class Terminal:
                     candidate.temperature = self.decimal("Temperature", cfg.temperature)
                     self.say('Opzioni aggiuntive JSON, ad esempio {"top_p": 0.9}; {} le azzera.')
                     candidate.ollama_options = json.loads(self.ask("Opzioni Ollama", default=json.dumps(cfg.ollama_options)))
+                    self.say("Memoria Ollama: -1 senza scadenza, 10m o 5m a tempo, 0 scarica dopo ogni risposta.")
+                    value = self.ask("keep_alive", choices=["-1", "10m", "5m", "0"], default=str(cfg.ollama_keep_alive))
+                    candidate.ollama_keep_alive = int(value) if value in ("-1", "0") else value
+                    self.say("Lo scaricamento finale richiede uso esclusivo verificabile; con l'API condivisa viene omesso per proteggere altri client.")
+                    candidate.ollama_unload_on_exit = self.ask("Scarica il modello alla fine della conversazione (solo se sicuro)?", choices=["s", "n"], default="s" if cfg.ollama_unload_on_exit else "n", case_sensitive=False) == "s"
                 elif choice == "5":
                     candidate.max_turns = self.integer("Messaggi predefiniti", cfg.max_turns, 1)
                     candidate.timeout = self.decimal("Timeout generazione (secondi)", cfg.timeout, positive=True)
                     candidate.delay = self.decimal("Ritardo fra messaggi (secondi)", cfg.delay)
                 elif choice == "6":
-                    candidate.first = self.select("Chi inizia", ["codex", "ollama"], cfg.first)
+                    if cfg.adapter_pair:
+                        slots = ["codex", "ollama"]
+                        names = [f"{letter} · {participant_label(cfg, slot)}" for letter, slot in zip(("A", "B"), slots)]
+                        selected = self.select("Chi inizia", names, names[slots.index(cfg.first)])
+                        candidate.first = slots[names.index(selected)]
+                    else:
+                        candidate.first = self.select("Chi inizia", ["codex", "ollama"], cfg.first)
                 elif choice == "7":
                     value = Path(self.ask("Cartella salvataggi (percorso assoluto)", default=cfg.output_dir)).expanduser()
                     if not value.is_absolute():
@@ -221,3 +302,85 @@ class Terminal:
                 self.say("Impostazioni salvate.")
             except (BridgeError, ValueError, TypeError, OSError) as e:
                 self.error(f"Impostazioni non salvate: {e}")
+
+    def adapter_settings(self, preferences):
+        from .integrations import AdapterCatalog, PROVIDERS, new_profile, validate_profile
+        catalog = AdapterCatalog()
+        while True:
+            cfg = preferences.load()
+            profiles = catalog.load(cfg)
+            self.say("ADAPTER E INTEGRAZIONI\n1. Elenco adapter\n2. Aggiungi adapter\n3. Modifica adapter\n4. Rimuovi adapter\n5. Scegli interlocutori A e B\n6. Torna a Codex e Ollama predefiniti\n7. Informazioni MCP e API\n8. Limite token delle risposte API\n0. Torna alle impostazioni")
+            choice = self.ask("Seleziona", choices=[str(i) for i in range(9)], default="0")
+            if choice == "0":
+                return
+            try:
+                if choice == "1":
+                    for p in profiles:
+                        self.say(f"{p['name']} · {PROVIDERS[p['provider']]} · modello: {p['model'] or 'da scegliere'}")
+                    self.say("Coppia attiva: " + (" ↔ ".join(p['name'] for p in cfg.adapter_pair.values()) if cfg.adapter_pair else "Codex ↔ Ollama predefiniti"))
+                    continue
+                if choice == "7":
+                    self.say("OpenAI e OpenRouter sono provider API: aggiungili come adapter. MCP collega strumenti e risorse, non sostituisce un modello. Questa versione non collega server MCP né abilita strumenti nei dialoghi. Claude Code richiede un adapter dedicato, non ancora incluso.")
+                    continue
+                if choice == "8":
+                    cfg.api_max_output_tokens = self.integer("Massimo token di risposta API", cfg.api_max_output_tokens, 1)
+                    preferences.save(cfg)
+                    continue
+                if choice == "6":
+                    cfg.adapter_pair = {}
+                    for p in profiles:
+                        if p['id'] == 'codex-default':
+                            cfg.codex_model, cfg.codex_binary = p['model'], p['binary']
+                        elif p['id'] == 'ollama-default':
+                            cfg.ollama_model, cfg.ollama_url = p['model'], p['url']
+                    preferences.save(cfg)
+                    self.say("Ripristinati Codex e Ollama predefiniti.")
+                    continue
+                if choice == "5":
+                    pair = {}
+                    for slot, label in (("codex", "A"), ("ollama", "B")):
+                        allowed = [p for p in profiles if not (slot == "ollama" and (p['provider'] == 'codex' or (pair['codex']['provider'] == 'ollama' and p['provider'] == 'ollama')))]
+                        if not allowed:
+                            raise BridgeError("Aggiungi un adapter compatibile per il secondo interlocutore.")
+                        values = [f"{p['name']} · {PROVIDERS[p['provider']]} · {p['id'][:8]}" for p in allowed]
+                        value = self.select(f"Interlocutore {label}", values, values[0])
+                        pair[slot] = dict(allowed[values.index(value)])
+                    cfg.adapter_pair = pair
+                    cfg.validate()
+                    preferences.save(cfg)
+                    self.say("Interlocutori salvati per i nuovi dialoghi. Gli storici mantengono i propri adapter.")
+                    continue
+                if choice == "2":
+                    labels = list(PROVIDERS.values())
+                    label = self.select("Tipo adapter", labels, labels[0])
+                    profile = new_profile(next(k for k, v in PROVIDERS.items() if v == label), self.ask("Nome del profilo"))
+                else:
+                    values = [f"{p['name']} · {p['id'][:8]}" for p in profiles]
+                    value = self.select("Adapter", values, values[0])
+                    profile = dict(profiles[values.index(value)])
+                    if choice == "4":
+                        if any(p['id'] == profile['id'] for p in cfg.adapter_pair.values()):
+                            raise BridgeError("Adapter nella coppia attiva: scegli altri interlocutori prima di rimuoverlo.")
+                        if self.confirm("Rimuovere il profilo? Gli storici restano intatti"):
+                            catalog.save([p for p in profiles if p['id'] != profile['id']])
+                        continue
+                    profile['name'] = self.ask("Nome del profilo", default=profile['name'])
+                if profile['provider'] == 'codex':
+                    profile['binary'] = self.ask("Eseguibile Codex", default=profile['binary'])
+                elif profile['provider'] == 'ollama':
+                    profile['url'] = self.ask("URL Ollama locale", default=profile['url'])
+                else:
+                    self.say("Inserisci il NOME della variabile d'ambiente, non il valore della chiave API. La scelta dell'adapter API può comportare costi di generazione.")
+                    profile['api_key_env'] = self.ask("Variabile della chiave API", default=profile['api_key_env'])
+                model = self.ask("Modello preferito (facoltativo; '-' cancella)", default=profile['model'])
+                profile['model'] = '' if model == '-' else model
+                validate_profile(profile)
+                profiles = [p for p in profiles if p['id'] != profile['id']] + [profile]
+                catalog.save(profiles)
+                for slot, previous in cfg.adapter_pair.items():
+                    if previous['id'] == profile['id']:
+                        cfg.adapter_pair[slot] = dict(profile)
+                preferences.save(cfg)
+                self.say("Adapter salvato. Usa 'Scegli interlocutori A e B' per selezionarlo.")
+            except (BridgeError, OSError, ValueError, TypeError) as e:
+                self.error(str(e))

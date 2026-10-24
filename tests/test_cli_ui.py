@@ -64,7 +64,7 @@ class ParserTests(IsolatedSettings, unittest.TestCase):
 
     def test_no_args_opens_menu_and_exit_needs_no_settings_or_connections(self):
         ui = self.ui()
-        with patch("alterecho.cli.Terminal", return_value=ui), patch.object(Prompt, "get_input", return_value="6"), patch("alterecho.cli.CodexAdapter") as codex:
+        with patch("alterecho.cli.Terminal", return_value=ui), patch.object(Prompt, "get_input", return_value="0"), patch("alterecho.cli.CodexAdapter") as codex:
             self.assertEqual(main([]), 0)
         codex.assert_not_called()
         self.assertIn("Nuova conversazione", ui.console.file.getvalue())
@@ -237,17 +237,31 @@ class MenuTests(IsolatedSettings, unittest.TestCase):
         ui = self.ui()
         settings = UserSettings()
         diagnostics = MagicMock()
-        inputs = ["1", "2", "Favorevole", "Contrario", "2", "Curioso", "Prudente",
-                  "3", "4", "codex", "-", "4", "http://127.0.0.1:11434", "8192", "600", "0,8", '{"top_p":0.9}',
-                  "5", "14", "240", "1,5", "6", "2", "7", str(self.root / "salvataggi"), "8", "0"]
+        inputs = ["1", "1", "2", "Favorevole", "Contrario", "2", "Curioso", "Prudente", "3", "2", "0",
+                  "2", "2", "4", "codex", "-", "3", "http://127.0.0.1:11434", "8192", "600", "0,8", '{"top_p":0.9}', "10m", "n", "0",
+                  "3", "1", "14", "240", "1,5", "2", str(self.root / "salvataggi"), "0", "4", "1", "0", "0"]
         with patch.object(Prompt, "get_input", side_effect=inputs):
             ui.settings(settings, diagnostics)
         cfg = settings.load()
         self.assertEqual((cfg.mode, cfg.roles["codex"], cfg.positions["ollama"], cfg.codex_effort), ("debate", "Curioso", "Contrario", "medium"))
         self.assertEqual((cfg.num_ctx, cfg.num_predict, cfg.temperature, cfg.delay, cfg.timeout, cfg.max_turns, cfg.first), (8192, 600, 0.8, 1.5, 240, 14, "ollama"))
         self.assertEqual(cfg.ollama_options, {"top_p": 0.9})
+        self.assertEqual((cfg.ollama_keep_alive, cfg.ollama_unload_on_exit), ("10m", False))
         self.assertEqual(cfg.output_dir, str(self.root / "salvataggi"))
         diagnostics.assert_called_once()
+
+    def test_settings_submenus_go_back_without_saving_or_connecting(self):
+        ui = self.ui()
+        settings = UserSettings()
+        diagnostics = MagicMock()
+        inputs = ["1", "0", "2", "1", "0", "0", "3", "0", "4", "0", "0"]
+        with patch.object(Prompt, "get_input", side_effect=inputs):
+            ui.settings(settings, diagnostics)
+        self.assertFalse(settings.path.exists())
+        diagnostics.assert_not_called()
+        output = ui.console.file.getvalue()
+        for title in ("Conversazione", "Modelli e adapter", "Esecuzione e salvataggi", "Diagnostica e manutenzione", "ADAPTER E INTEGRAZIONI"):
+            self.assertIn(title, output)
 
     def test_invalid_settings_are_not_persisted_and_reset_keeps_history(self):
         ui = self.ui()
@@ -255,13 +269,13 @@ class MenuTests(IsolatedSettings, unittest.TestCase):
         cfg = Config(mode="blind", delay=3)
         settings.save(cfg)
         original = settings.path.read_bytes()
-        with patch.object(Prompt, "get_input", side_effect=["4", "http://evil.example", "4096", "512", "0.7", "{}", "0"]):
+        with patch.object(Prompt, "get_input", side_effect=["2", "3", "http://evil.example", "4096", "512", "0.7", "{}", "-1", "s", "0", "0"]):
             ui.settings(settings, MagicMock())
         self.assertEqual(settings.path.read_bytes(), original)
         store = Store(Path(cfg.output_dir) / "chat.json")
         store.save(Conversation(cfg.to_dict()))
         saved = store.path.read_bytes()
-        with patch.object(Prompt, "get_input", side_effect=["9", "s", "0"]):
+        with patch.object(Prompt, "get_input", side_effect=["4", "2", "s", "0", "0"]):
             ui.settings(settings, MagicMock())
         self.assertEqual(settings.load().to_dict(), Config().to_dict())
         self.assertEqual(store.path.read_bytes(), saved)

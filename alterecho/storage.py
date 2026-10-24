@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from dataclasses import dataclass
 
-from .history import Conversation
+from .history import Conversation, participant_label
 from .stats import summarize
 from .config import BridgeError
 
@@ -63,7 +63,8 @@ class Store:
         md = ["# AlterEcho", "", f"Argomento: {conversation.config['topic']}", f"Modalità: {conversation.config['mode']}", f"Stato: {conversation.status}", ""]
         txt = ["AlterEcho", f"Argomento: {conversation.config['topic']}", f"Stato: {conversation.status}", ""]
         for i, m in enumerate(conversation.messages, 1):
-            title = f"{i}. {m.speaker} / {m.model} · {m.timestamp} · {m.seconds:.2f}s"
+            label = participant_label(conversation.config, m.speaker) if conversation.config.get('adapter_pair') else m.speaker
+            title = f"{i}. {label} / {m.model} · {m.timestamp} · {m.seconds:.2f}s"
             md.extend([f"## {title}", "", m.text, ""])
             txt.extend([title, m.text, ""])
         if conversation.partial:

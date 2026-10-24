@@ -9,9 +9,23 @@ from ..history import ollama_history, now
 
 
 class OllamaAdapter:
-    def __init__(self, config: Config, transport=None):
+    def __init__(self, config: Config, transport=None, speaker="ollama"):
         self.config = config
+        self.speaker = speaker
         self.client = httpx.AsyncClient(base_url=config.ollama_url.rstrip("/"), timeout=config.timeout, trust_env=False, transport=transport)
+        self.resident_before = None
+        self.memory_notice = None
+        self._generation_started = False
+        self._closed = False
+
+    def _selected_is_resident(self, data):
+        selected = self.config.ollama_model.removesuffix(":latest")
+        return any(
+            name.removesuffix(":latest") == selected
+            for model in data.get("models", [])
+            for name in (model.get("name"), model.get("model"))
+            if isinstance(name, str)
+        )
 
     async def request(self, method, path, **kwargs):
         try:
@@ -34,21 +48,21 @@ class OllamaAdapter:
         limits = [v for k, v in data.get("model_info", {}).items() if k.endswith(".context_length") and isinstance(v, int)]
         if limits and self.config.num_ctx > max(limits):
             raise BridgeError("num_ctx supera il contesto dichiarato dal modello Ollama.")
-        # Unload any previously resident *other* model before generating the selected one.
-        for m in (await self.request("GET", "/api/ps")).get("models", []):
-            name = m.get("name", m.get("model"))
-            if name and name != self.config.ollama_model:
-                await self.request("POST", "/api/generate", json={"model": name, "keep_alive": 0})
+        # Snapshot once, before our first generation. /api/ps is not an ownership
+        # or active-client API: never evict other applications' resident models.
+        if self.resident_before is None:
+            self.resident_before = self._selected_is_resident(await self.request("GET", "/api/ps"))
 
     async def generate(self, conversation, checkpoint):
         cfg = self.config
-        messages = ollama_history(cfg, conversation)
+        messages = ollama_history(cfg, conversation, self.speaker)
         payload = {"model": cfg.ollama_model, "messages": messages, "stream": True,
-                   "think": False, "keep_alive": 0, "truncate": False, "shift": False,
+                   "think": False, "keep_alive": cfg.ollama_keep_alive, "truncate": False, "shift": False,
                    "options": {**cfg.ollama_options, "temperature": cfg.temperature, "num_ctx": cfg.num_ctx, "num_predict": cfg.num_predict}}
         pieces = []
         last_checkpoint = 0.0
         final = None
+        self._generation_started = True
         try:
             async with asyncio.timeout(cfg.timeout):
                 async with self.client.stream("POST", "/api/chat", json=payload) as response:
@@ -69,7 +83,7 @@ class OllamaAdapter:
                         part = data.get("message", {}).get("content", "")
                         if part:
                             pieces.append(part)
-                            conversation.partial = {"speaker": "ollama", "model": cfg.ollama_model, "text": "".join(pieces), "timestamp": now()}
+                            conversation.partial = {"speaker": self.speaker, "model": cfg.ollama_model, "text": "".join(pieces), "timestamp": now()}
                             if time.monotonic() - last_checkpoint > 0.5:
                                 checkpoint()
                                 last_checkpoint = time.monotonic()
@@ -83,6 +97,10 @@ class OllamaAdapter:
             if not text.strip():
                 raise BridgeError("Risposta Ollama vuota.")
             usage = {"input_tokens": final.get("prompt_eval_count"), "output_tokens": final.get("eval_count")}
+            for source, target in (("load_duration", "load_seconds"), ("eval_duration", "generation_seconds")):
+                duration = final.get(source)
+                if type(duration) is int and duration >= 0:
+                    usage[target] = duration / 1e9
             if final.get("eval_duration") and final.get("eval_count") is not None:
                 usage["tokens_per_second"] = final["eval_count"] / (final["eval_duration"] / 1e9)
             return Reply(text, final.get("model", cfg.ollama_model), usage)
@@ -93,4 +111,27 @@ class OllamaAdapter:
                 checkpoint()
 
     async def close(self):
-        await self.client.aclose()
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if not self._generation_started or not self.config.ollama_unload_on_exit:
+                return
+            if self.resident_before is True:
+                self.memory_notice = "Ollama: modello già residente prima del dialogo; nessuno scaricamento finale richiesto."
+                return
+            # Even a model loaded by this adapter can have been reused by WebUI
+            # or another client. Native Ollama offers no exclusive lease/refcount.
+            # Absence at startup or an expires_at value is NOT proof of ownership.
+            async with asyncio.timeout(min(self.config.timeout, 5)):
+                resident = self._selected_is_resident(await self.request("GET", "/api/ps"))
+            if resident:
+                self.memory_notice = (
+                    "Ollama: scaricamento finale richiesto ma non eseguito: /api/ps non permette di verificare "
+                    "l'uso esclusivo. Il modello può restare residente; usa ollama stop NOME_MODELLO "
+                    "solo quando le altre applicazioni non lo usano."
+                )
+        except (BridgeError, TimeoutError) as e:
+            self.memory_notice = f"Ollama: controllo finale della memoria non riuscito; nessuno scaricamento richiesto. {e}"
+        finally:
+            await self.client.aclose()

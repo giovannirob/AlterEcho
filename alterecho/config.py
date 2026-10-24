@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 import ipaddress
 import math
 import tomllib
-from .paths import data_dir
+from .paths import data_dir, conversations_dir
 
 
 class BridgeError(Exception):
@@ -25,10 +25,14 @@ class Config:
     codex_effort: str = "low"
     ollama_model: str = "qwen3.5:9b"
     ollama_url: str = "http://localhost:11434"
+    ollama_keep_alive: int | str = -1
+    ollama_unload_on_exit: bool = True
     num_ctx: int = 4096
     num_predict: int = 512
     temperature: float = 0.7
     ollama_options: dict = field(default_factory=dict)
+    adapter_pair: dict = field(default_factory=dict)
+    api_max_output_tokens: int = 512
     roles: dict = field(default_factory=lambda: {"codex": "", "ollama": ""})
     positions: dict = field(default_factory=lambda: {
         "codex": "Sostieni la posizione favorevole.",
@@ -36,16 +40,35 @@ class Config:
     })
     # Legacy field accepted for old TOML files and saved sessions; no longer used.
     codex_context_budget: int = 24000
-    output_dir: str = field(default_factory=lambda: str(data_dir() / "conversations"))
+    output_dir: str = field(default_factory=lambda: str(conversations_dir()))
     codex_work_dir: str = field(default_factory=lambda: str(data_dir() / "work/codex-dialogue"))
 
     def validate(self):
+        if not isinstance(self.adapter_pair, dict):
+            raise BridgeError("adapter_pair deve essere una tabella.")
+        if self.adapter_pair:
+            from .integrations import validate_profile
+            if set(self.adapter_pair) != {"codex", "ollama"}:
+                raise BridgeError("Seleziona entrambi gli interlocutori A e B.")
+            for profile in self.adapter_pair.values():
+                validate_profile(profile)
+            if self.adapter_pair["ollama"]["provider"] == "codex":
+                raise BridgeError("Codex CLI può occupare soltanto la posizione A.")
+            if sum(p["provider"] == "ollama" for p in self.adapter_pair.values()) > 1:
+                raise BridgeError("È consentito un solo modello Ollama per dialogo.")
+        # A deliberate subset of Ollama's native duration/seconds formats.
+        value = self.ollama_keep_alive
+        if not ((type(value) is int and value in (-1, 0)) or
+                (type(value) is str and value in ("5m", "10m"))):
+            raise BridgeError('ollama_keep_alive deve essere -1, 0, "5m" o "10m".')
+        if type(self.ollama_unload_on_exit) is not bool:
+            raise BridgeError("ollama_unload_on_exit deve essere true o false.")
         for name in ("topic", "codex_model", "codex_binary", "codex_home", "ollama_model", "ollama_url", "output_dir", "codex_work_dir"):
             if not isinstance(getattr(self, name), str):
                 raise BridgeError(f"{name} deve essere un testo.")
         if self.mode not in {"free", "debate", "blind"} or self.first not in {"codex", "ollama"}:
             raise BridgeError("Modalità o primo interlocutore non validi.")
-        for name in ("max_turns", "num_ctx", "num_predict"):
+        for name in ("max_turns", "num_ctx", "num_predict", "api_max_output_tokens"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
                 raise BridgeError(f"{name} deve essere un intero positivo.")
