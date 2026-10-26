@@ -1,138 +1,137 @@
-# Build e release da tag
+# Tag-triggered builds and releases
 
-La distribuzione è preparata in `.github/workflows/release.yml`. La versione 1.1.0 è preparata per il tag locale `v1.1.0`, senza push, immagini remote o GitHub Releases. Il primo ciclo di pubblicazione dovrà essere verificato su GitHub dopo un push autorizzato del tag. Il repository e i package mantengono la loro visibilità privata.
+**English** | [Italiano](RELEASE.it.md)
 
-## Due workflow
+`.github/workflows/release.yml` builds distributions only when a **new version tag** is pushed. Creating a local commit/tag does not publish anything. The i18n work is included in version 1.2.0; publication requires an explicit tag push. The first real remote release remains unverified; repository/package visibility is not changed automatically.
 
-| Evento | `test.yml` | `release.yml` |
+## Two workflows
+
+| Event | `test.yml` | `release.yml` |
 | --- | --- | --- |
-| Push su main o altro branch, anche solo README | Test Python, frontend e browser | Non parte |
-| Pull request | Gli stessi controlli, senza scritture remote | Non parte |
-| Tag non relativo a versioni, es. `docs-update` o il vecchio `1.0.0` | Non parte | Non parte |
-| Nuovo tag `v1.1.0` | Richiamato dalla release come workflow riutilizzabile | Valida, testa, costruisce e pubblica |
-| Tag che supera il filtro ma è invalido, es. `v01.1.0` | Non richiamato | Fallisce nel primo job, senza build |
-| Tag cancellato/spostato o versione già pubblicata | Non richiamato | Validazione rifiutata |
+| Branch push, including README-only changes | Python/frontend/browser checks | Does not run |
+| Pull request | Same checks, read-only permissions | Does not run |
+| Unrelated tag or old unprefixed `1.0.0` | Does not run | Does not run |
+| New `v1.2.0` | Called as a reusable workflow | Validate, test, build and publish |
+| Matching glob but invalid SemVer, e.g. `v01.2.0` | Not called | Fails validation before builds |
+| Deleted/moved tag or duplicate version | Not called | Validation rejects it |
 
-Il workflow di pubblicazione non ha `workflow_dispatch`, `pull_request`, trigger sui branch o `workflow_call`. Il filtro GitHub `v[0-9]*.[0-9]*.[0-9]*` è solo un prefiltro: `deploy/release.py` verifica rigorosamente SemVer, evento `push`, `created=true`, `forced=false`, `deleted=false`, versioni e commit effettivo del tag remoto. Sono gestiti tag lightweight e annotati.
+There is no publication `workflow_dispatch`, PR/branch trigger or `workflow_call`. GitHub glob `v[0-9]*.[0-9]*.[0-9]*` is only a prefilter. `deploy/release.py` strictly checks SemVer, push event, `created=true`, `forced=false`, `deleted=false`, version files and the remote tag's peeled commit. Both annotated and lightweight tags are handled.
 
-La CI ordinaria non invoca `python -m build`, PyInstaller, build Docker, pubblicazione o upload di artifact. Installa il progetto in editable per testare il launcher; non produce distribuzioni in `dist/`. I test Python usano le risorse statiche già versionate; Playwright usa i sorgenti correnti tramite Vite in sviluppo, con API reali e provider simulati. Non dipende da una build frontend di produzione per i test browser.
+Normal CI does not invoke `python -m build`, PyInstaller, Docker builds or release uploads. Editable installation tests the CLI launcher, rather than producing packages in `dist/`. Python tests use committed static files. Playwright tests current source through Vite development mode with real HTTP/SSE and mock providers, without production frontend build.
 
-## Ordine e permessi
+## Order and permissions
 
 ```text
-validate → tests (CI riutilizzata) → frontend → python
-        → standalone (5 runner nativi) → docker-build (2 runner nativi)
-        → docker-publish → publish GitHub Release
+validate → tests → frontend → python → standalone (5 native runners)
+         → docker-build (2 native runners) → docker-publish → GitHub Release
 ```
 
-Ogni fase dipende dai successi precedenti. Un test/build/smoke test fallito impedisce la pubblicazione. Le due immagini vengono prima salvate in artifact intermedi con SHA-256 e un record della verifica. Il job di pubblicazione controlla **entrambi** i record prima di inviare immagini; non ricostruisce immagini non testate.
+Every phase requires previous success. Both image archives carry architecture/version/commit verification and SHA-256; the publisher validates both before any registry write and publishes those exact tested images without rebuilding.
 
-Il token predefinito ha solo `contents: read`. Soltanto `docker-publish` richiede `packages: write`; soltanto `publish` richiede `contents: write`. Si usa il `GITHUB_TOKEN` fornito da Actions: nessun PAT necessario per pubblicare dal workflow, nessuna chiave dei provider, firma o login Codex. Checkout senza credenziali persistenti; Actions ufficiali GitHub/Docker fissate a SHA di commit, da aggiornare con revisione.
+Default token permissions are `contents: read`. Only Docker publication requests `packages: write`; only final GitHub publication requests `contents: write`. Actions uses `GITHUB_TOKEN`, not a required PAT. There are no provider keys, signing credentials or Codex login in tests. Checkouts do not persist credentials; official GitHub/Docker Actions are pinned to reviewed commit SHAs.
 
-Una concurrency globale serializza tutte le release, senza interrompere quella in corso: protegge anche gli alias Docker `latest` e `MAJOR.MINOR`. Non inviare raffiche di tag: GitHub può sostituire un’esecuzione ancora pending con una successiva dello stesso gruppo.
+Global release concurrency prevents an active release from being interrupted and serializes `latest`/minor alias updates. Do not push bursts of tags: GitHub may replace a pending run in the same concurrency group.
 
-## Versioni senza modifiche automatiche
+## Coherent versions without automatic edits
 
-Prima di creare il tag, prepara e committa versioni coerenti:
-
-| Componente | Stabile | Prerelease di esempio |
+| Component | Stable | Prerelease example |
 | --- | --- | --- |
-| Tag Git | `v1.1.0` | `v1.2.0-rc.1` |
-| `pyproject.toml` e `alterecho/__init__.py` | `1.1.0` | `1.2.0rc1` |
-| `web/package.json` e due campi versione nel lock npm | `1.1.0` | `1.2.0-rc.1` |
-| Nome pacchetto Python | `alterecho-1.1.0…` | `alterecho-1.2.0rc1…` |
-| Tag Docker specifico | `1.1.0` | `1.2.0-rc.1` |
+| Git tag | `v1.2.0` | `v1.2.0-rc.1` |
+| Python project and runtime | `1.2.0` | `1.2.0rc1` |
+| npm package and both lock version fields | `1.2.0` | `1.2.0-rc.1` |
+| Python artifact | `alterecho-1.2.0…` | `alterecho-1.2.0rc1…` |
+| Specific Docker tag | `1.2.0` | `1.2.0-rc.1` |
 
-I pacchetti Python seguono PEP 440; il tag e npm seguono SemVer. Il validatore verifica questa corrispondenza esplicita, e runtime/CLI/server devono dichiarare esattamente la versione del progetto Python. Nessun job riscrive una versione dopo il checkout. Sono supportate le fasi `alpha.N`, `beta.N`, `rc.N`, `dev.N`; altri identificatori SemVer prerelease vengono rifiutati con spiegazione perché non rappresentabili direttamente nella versione Python scelta.
+Python follows PEP 440; Git/npm follow SemVer. Runtime, CLI and server must exactly match the Python project version. The Web UI displays npm's version. No job rewrites files after checkout. Supported prerelease phases are `alpha.N`, `beta.N`, `rc.N` and `dev.N`; other SemVer identifiers are rejected clearly because they cannot be represented by this Python mapping.
 
-La build metadata SemVer `+build.4` è supportata: il nome Python usa la normalizzazione PEP 440 e il tag Docker sostituisce `+` con `_`, perché `+` non è ammesso nei tag OCI/Docker. La label OCI conserva la versione SemVer originale. Il tag specifico deve rispettare il limite Docker di 128 caratteri.
+Build metadata such as `+build.4` is supported: Python uses PEP 440 normalization; Docker replaces `+` with `_` because OCI tags reject `+`. OCI version labels retain original SemVer. Docker tags cannot exceed 128 characters. Stable releases must increase beyond published stable versions to avoid rolling `latest` backward. Equivalent unprefixed tags, existing releases/drafts and moved refs are rejected; refs are rechecked before publication.
 
-Le release stabili devono essere crescenti rispetto alle stabili già pubblicate, per non retrocedere `latest`. Sono rifiutati anche un duplicato senza prefisso `v` e qualsiasi release/draft preesistente della medesima versione. Il tag remoto viene ricontrollato prima delle pubblicazioni.
+## Matrix and assets
 
-## Matrice e allegati
-
-| Sistema | Runner nativo | Allegato atteso per `v1.1.0` |
+| Target | Native runner | Asset for `v1.2.0` |
 | --- | --- | --- |
-| Windows x64 | `windows-2022` | `AlterEcho-1.1.0-windows-x64.zip` |
-| Linux x64 | `ubuntu-22.04` | `AlterEcho-1.1.0-linux-x64.tar.gz` |
-| Linux ARM64 | `ubuntu-22.04-arm` | `AlterEcho-1.1.0-linux-arm64.tar.gz` |
-| macOS Apple Silicon | `macos-15` | `AlterEcho-1.1.0-macos-arm64.tar.gz` |
-| macOS Intel | `macos-15-intel` | `AlterEcho-1.1.0-macos-x64.tar.gz` |
-| Python | `ubuntu-22.04` | `alterecho-1.1.0-py3-none-any.whl`, `alterecho-1.1.0.tar.gz` |
+| Windows x64 | `windows-2022` | `AlterEcho-1.2.0-windows-x64.zip` |
+| Linux x64 | `ubuntu-22.04` | `AlterEcho-1.2.0-linux-x64.tar.gz` |
+| Linux ARM64 | `ubuntu-22.04-arm` | `AlterEcho-1.2.0-linux-arm64.tar.gz` |
+| macOS ARM64 | `macos-15` | `AlterEcho-1.2.0-macos-arm64.tar.gz` |
+| macOS Intel | `macos-15-intel` | `AlterEcho-1.2.0-macos-x64.tar.gz` |
+| Python | `ubuntu-22.04` | `alterecho-1.2.0-py3-none-any.whl`, `alterecho-1.2.0.tar.gz` |
 
-I runner ARM64 standard sono documentati anche per repository privati da [GitHub](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). Disponibilità, policy e minuti del piano restano da verificare nell’account. Se un runner richiesto non è disponibile, la release si ferma: non viene saltata una piattaforma né generato un binario fittizio. Per cambiare le piattaforme supportate, modificare insieme matrice e `PLATFORMS` nel validatore, prima di un nuovo tag e dopo i relativi test.
+Verify runner availability, private-repository policy and billed minutes on the account. Missing required runners stop the release; no platform is silently skipped or cross-compiled fictitiously. Changing supported platforms requires changing both the workflow and `PLATFORMS` in release tooling before a new tag. [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
-Ogni eseguibile viene eseguito fuori dal checkout: server foreground, Web statica, CLI HTTP, demo, persistenza, shutdown e nuovo avvio detached. Su Windows viene controllata anche l’assenza di console visibile. Gli archivi contengono il binario e una guida breve; le risorse Web sono incorporate. Non contengono Codex, Ollama, pesi o credenziali.
+Every executable is run outside the checkout: version, foreground/background server, static Web resources, HTTP CLI, demo, persistence and shutdown. Windows also checks for no visible console. Archives contain only executable/guide; Web resources and language catalogs are embedded. Codex, Ollama, weights and credentials are excluded.
 
-Linux: i binari sono costruiti su Ubuntu 22.04 con glibc 2.35; richiedono una distribuzione glibc compatibile, non Alpine/musl. Versioni precedenti di glibc non sono supportate da queste build. macOS: non viene configurata firma Developer ID o notarizzazione; Gatekeeper può bloccare il download. Il runner usa macOS 15: compatibilità con versioni precedenti o altri browser/dispositivi va collaudata separatamente. Verificare provenienza e checksum, senza disabilitare globalmente Gatekeeper.
+Linux release binaries target Ubuntu 22.04/glibc 2.35+, not Alpine/musl or older glibc. macOS 15 builds are unsigned/not notarized; Gatekeeper and older-system compatibility require separate validation. Do not disable Gatekeeper globally.
 
-Wheel e sdist vengono installati ciascuno in un virtualenv nuovo: il test verifica server, CLI, statici, provider dichiarati, demo e persistenza senza usare il checkout come modulo. Nessuna pubblicazione PyPI. Gli artifact Actions servono solo tra job e scadono dopo tre giorni; la distribuzione finale è nella GitHub Release.
+Wheel and sdist are separately installed into fresh environments and checked for HTTP/CLI/Web/demo/provider metadata and restart persistence, without importing from checkout. No PyPI publication. Intermediate Actions artifacts expire after three days; final distribution is in GitHub Releases.
 
 ## Docker / GHCR
 
-Repository immagine: `ghcr.io/giovannirob/alterecho`. Per una stabile vengono pubblicati `1.1.0`, `1.1` e `latest`; per `v1.2.0-rc.1` solo `1.2.0-rc.1`. Le prerelease non aggiornano né `latest` né l’alias minore.
+Image: `ghcr.io/giovannirob/alterecho`. Stable `v1.2.0` publishes `1.2.0`, `1.2`, `latest`. Prerelease `v1.2.0-rc.1` publishes only `1.2.0-rc.1`, without changing `latest` or the minor alias.
 
-Il Dockerfile mantiene build multistage, Node solo per frontend e runtime Codex, Python headless non root UID 10001, healthcheck, SIGTERM, volumi esterni e `serve --foreground`. Ollama rimane esterno. Codex CLI è fissato alla versione verificata in `deploy/codex-version.txt`; il workflow la passa come build argument. Aggiornare anche i default di Dockerfile/Compose quando si cambia la versione predefinita di sviluppo, e ricollaudare entrambi i target.
+The multistage Dockerfile builds UI, packages Python and supplies Codex runtime; the server is nonroot UID 10001 and runs `serve --foreground` with healthcheck/SIGTERM/persistent volumes. Ollama stays external. Codex is pinned through `deploy/codex-version.txt`, passed as build argument; update Dockerfile/Compose defaults and recheck both architectures when changing it.
 
-Le immagini AMD64/ARM64 sono costruite e avviate su runner nativi distinti. I test invocano soltanto `codex --version` e `codex app-server --help`, mai login o generazioni reali. Le prove HTTP usano la demo. Il manifest multiarch viene creato solo dopo i due successi. Il job controlla architetture, user, command, label, Web/API, healthcheck, salvataggi, restart e shutdown; trasporta e pubblica gli stessi archivi immagine già verificati.
+Native AMD64/ARM64 jobs actually start each image. `codex --version`/`codex app-server --help` verify binaries without login/inference. HTTP tests use demo. Checks cover architecture, user, command, OCI labels, Web/API, health, saving, restart and shutdown. A multiarch manifest is created only after both pass. Unique `build-RUN-ATTEMPT-ARCH` staging references may remain in Packages; use version tags for installation.
 
-Le label OCI includono `source`, `revision`, `version`, titolo e descrizione. `source` associa il package al repository. Il tag immagine specifico viene controllato su GHCR prima del push e non viene sovrascritto; errori di autenticazione non sono interpretati come immagine assente. I tag `build-RUN-ATTEMPT-ARCH` sono riferimenti intermedi usati per assemblare il manifest e possono rimanere nel package; non sono release raccomandate per l’uso.
-
-Il package nasce con le impostazioni GHCR appropriate all’account/repository; **il workflow non modifica visibilità o policy**. Per pull privati serve autenticazione con un’identità autorizzata. Da Actions si può usare `GITHUB_TOKEN` con `packages: read`; da un computer locale usa il metodo previsto da GitHub, ad esempio un PAT classic con il solo `read:packages` e accesso al repository (SSO se richiesto). Non committare il token:
+OCI labels include source/revision/version/title/description; `source` associates the package with the repository. Existing version tags are refused. Authentication errors never count as an absent image. The workflow never modifies visibility/policy. Private pulls need an authorized identity: Actions may use `GITHUB_TOKEN` with `packages: read`; local users may use an appropriately scoped PAT classic with `read:packages` and repository/SSO access, per GitHub's supported method.
 
 ```sh
-# GHCR_READ_TOKEN è una credenziale di lettura caricata in modo protetto.
-printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io -u IL_TUO_UTENTE --password-stdin
-docker pull ghcr.io/giovannirob/alterecho:1.1.0
+printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+docker pull ghcr.io/giovannirob/alterecho:1.2.0
 ```
 
-Vedi [autenticazione Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) e [pubblicazione da Actions](https://docs.github.com/en/actions/use-cases-and-examples/publishing-packages/publishing-docker-images).
+Store the read token securely, never in Git. [GHCR authentication](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry) · [Actions publication](https://docs.github.com/en/actions/use-cases-and-examples/publishing-packages/publishing-docker-images).
 
-## Configurazione manuale GitHub
+## Manual GitHub configuration
 
-Prima del primo tag autorizzato:
+1. Enable Actions, allow pinned official GitHub/Docker Actions, and verify all five native runners and available minutes.
+2. Permit the two publication jobs' requested token permissions within organization policy. Do not add provider credentials for tests.
+3. For an existing GHCR package created elsewhere, grant this repository Actions write access. Verify repository association, private visibility and read permissions after first publication.
+4. Create a tag ruleset for `v*`: restrict creation to authorized maintainers, block updates/deletions and minimize bypasses. Protect workflow changes through branch review. Trigger filters do not replace rulesets.
+5. Optionally enable immutable releases manually. The workflow uploads/checks a draft before publication. Signing, notarization and OIDC attestations remain future work, not simulated features.
 
-1. Abilitare Actions e consentire le Actions ufficiali GitHub/Docker fissate nel workflow. Verificare accesso ai cinque runner e minuti disponibili; i repository privati possono consumare minuti fatturabili.
-2. Consentire al `GITHUB_TOKEN` i permessi richiesti nei due soli job di pubblicazione (`contents: write`, `packages: write`), nel rispetto delle policy dell’organizzazione. Non configurare chiavi dei provider per i test.
-3. Se il package GHCR esiste già ed è stato creato con altre credenziali, assegnare al repository l’accesso Actions di scrittura nelle impostazioni del package. Dopo la prima pubblicazione controllare associazione al repository, visibilità privata e permessi di lettura.
-4. Creare un ruleset per i tag `v*`: limitarne la creazione ai manutentori autorizzati, bloccare aggiornamenti forzati e cancellazioni, ridurre i bypass. Proteggere anche le modifiche ai workflow con le normali revisioni del branch. Il prefiltro Actions non sostituisce queste regole.
-5. Valutare l’attivazione manuale delle release immutabili. Il workflow carica tutti gli allegati in draft prima di pubblicare, compatibilmente con [le release immutabili GitHub](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).
+No settings have been changed remotely by this implementation.
 
-Non sono state modificate impostazioni remote da questo lavoro. Firma del codice, notarizzazione e attestazioni OIDC sono possibili estensioni future, non simulate né richieste implicitamente.
+## Maintainer procedure
 
-## Procedura del manutentore
-
-Revisionare e committare il codice completo, incluse versioni e workflow; verificare la CI del commit scelto. Il tag deve puntare a quel commit, non a modifiche presenti soltanto nella working tree.
-
-Aggiornare anche [CHANGELOG.md](../CHANGELOG.md): raccogliere le modifiche in **Non rilasciato** durante lo sviluppo e, quando si prepara una release, assegnare loro la versione e la data prevista. Il changelog è il riepilogo editoriale; le note automatiche GitHub aggiungono i riferimenti alle modifiche del repository. La sola modifica del changelog non pubblica alcuna distribuzione.
+Review and commit complete source, versions, catalogs, documentation and workflows; check that commit's CI. Update [CHANGELOG.md](../CHANGELOG.md) and its [Italian counterpart](../CHANGELOG.it.md), moving unreleased changes to a dated version when preparing a release. The tag must point to the intended committed tree, not working-copy-only edits. Automatic notes supplement the editorial changelog with repository references.
 
 ```sh
 git status
 git show HEAD:pyproject.toml
-git tag -a v1.1.0 -m "AlterEcho 1.1.0"
-git push origin v1.1.0
+git tag -a v1.2.0 -m "AlterEcho 1.2.0"
+git push origin v1.2.0
 ```
 
-Non occorre creare manualmente la release o caricare gli allegati. Il workflow genera le note con l’API GitHub, aggiunge data, elenco dei file effettivi, immagine/digest e istruzioni. Pubblica come prerelease quando appropriato. `SHA256SUMS.txt` copre tutti i pacchetti/archivi e `release-manifest.json`, che registra versione, commit, piattaforme e digest Docker. Ogni upload viene verificato contro digest e dimensione restituiti da GitHub prima di rimuovere lo stato draft.
+The release tag must point to the reviewed commit. To publish this prepared version, push only its explicit references:
 
-## Se la release fallisce
+```sh
+git push origin main v1.2.0
+```
 
-- Prima di qualsiasi pubblicazione: correggere la causa. Per un errore transitorio usare **Re-run failed jobs**, conservando i job riusciti e i loro artifact entro il periodo di retention.
-- Errore durante upload GitHub: resta un draft privato identificato da run ID e commit. Il job fallito può riprendere quel solo draft; riutilizza allegati già presenti solo se digest e dimensione coincidono. Non sovrascrive allegati diversi o draft di altre esecuzioni.
-- Se GHCR è già stato pubblicato e GitHub Release fallisce: rieseguire il solo job fallito di pubblicazione della release. Non rieseguire i job Docker riusciti: il controllo sulla versione GHCR li rifiuterebbe. Le due piattaforme non offrono una transazione atomica comune; il workflow non cancella automaticamente immagini o release per tentare rollback.
-- Se gli artifact sono scaduti, una build deve cambiare o un tag punta al commit errato: preparare una **nuova versione e un nuovo tag**. Non spostare o riscrivere tag già pubblicati. L’eventuale rimozione di un draft fallito o di riferimenti intermedi è un’operazione manuale da revisionare; una release pubblicata rimane intatta.
+This sends no `v1.1.0` tag. Its former local tag is retained only under `refs/alterecho/archived-tags/v1.1.0`, outside `refs/tags/`. Local `push.followTags=false` prevents implicit annotated-tag publication. Do not recreate/push the old tag or use an indiscriminate tag push when publishing a selected release. Pushing a branch's history does not publish ancestor tags.
 
-## Verifica locale senza pubblicare
+GitHub Release creation/upload is automatic. Notes include version/date, generated changes, actual assets and Docker digest/instructions. `SHA256SUMS.txt` covers all seven payloads plus `release-manifest.json`; the manifest records tag, commit, platforms and image digest. Uploads are checked against GitHub's returned size/digest before removing draft state. Prereleases do not become latest.
+
+## Failed releases
+
+- Before publication, correct the cause. For transient failures, **Re-run failed jobs** while successful-job artifacts remain available.
+- Interrupted GitHub uploads leave a private draft identified by run ID/commit. Only that draft can resume; matching assets are reused by digest/size. Foreign drafts or differing assets are not overwritten.
+- If GHCR succeeded and Release upload failed, rerun only the failed Release job. Rerunning successful Docker publication is rejected because the version exists. GHCR and GitHub Releases are not one atomic transaction; the workflow never deletes remote objects for rollback.
+- If artifacts expired, a build must change or a tag is wrong, prepare a new version/new tag. Never move a published tag. Draft/staging cleanup is manual and reviewable.
+
+## Local checks without publication
 
 ```sh
 python -m pip install -e '.[dev]'
-python -m unittest tests.test_release -v
+python -m unittest tests.test_release tests.test_i18n -v
 python -m unittest discover -q
 cd web
 npm run check
 npm test
-# impostare ALTERECHO_BROWSER_DEV=1 nell'ambiente per evitare la build Vite:
+# Set ALTERECHO_BROWSER_DEV=1 for development-mode browser tests:
 npm run test:e2e
+npm run build
 cd ..
 python -m build
 python deploy/check-package.py --clean-install
@@ -140,4 +139,4 @@ python -m PyInstaller --noconfirm deploy/alterecho.spec
 python deploy/check-standalone.py dist/alterecho.exe
 ```
 
-Su Linux/macOS l’eseguibile è `dist/alterecho`. I comandi `publish-docker` e `publish-release` non sono test locali: scrivono su servizi remoti e non vanno invocati senza autorizzazione. I test usano client fittizi per queste operazioni. Nessun tag di prova è necessario per verificare trigger, normalizzazione versioni, DAG dei job, duplicati, checksum, upload parziali e protezioni.
+Use `dist/alterecho` on Linux/macOS. `publish-docker` and `publish-release` write remotely and must not be used without authorization. Tests inject fake HTTP/registry clients; no test tag is needed to verify triggers, versions, DAG, duplicates, checksums or interrupted uploads. [Recorded results](VERIFICATION-RELEASE.md).

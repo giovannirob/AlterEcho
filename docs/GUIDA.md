@@ -1,6 +1,8 @@
 # Guida all’uso di AlterEcho 1.1
 
-[Torna alla presentazione](../README.md) · [Servizi e container](../deploy/README.md) · [Architettura](../ARCHITETTURA.md)
+[English](GUIDE.md) | **Italiano**
+
+[Torna alla presentazione](../README.it.md) · [Servizi e container](../deploy/README.it.md) · [Architettura](../ARCHITETTURA.md)
 
 Qui trovi le istruzioni complete trasferite dal README: installazione, autenticazione, provider, rete, salvataggi e manutenzione.
 
@@ -53,6 +55,14 @@ La pagina conversazione ha un’area di scorrimento dedicata: segue lo streaming
 
 Nei moduli ordinari i modelli si scelgono dai cataloghi verificati con `doctor`, senza inferenze. I risultati vengono riutilizzati durante le modifiche al modulo; **Aggiorna modelli** richiede una nuova verifica. Modelli rimossi, provider offline, cataloghi vuoti e ragionamento incompatibile bloccano l’avvio finché la selezione non viene corretta esplicitamente. Le risposte storiche conservano i modelli originali. Per un nuovo profilo, salva prima provider/endpoint, verifica il catalogo e poi scegli la preferenza. Le modali riepilogano avvio, ripresa ed eliminazione; il consenso per API a consumo resta esplicito per ogni operazione.
 
+## Lingua
+
+La Web UI rileva le preferenze del browser nell’ordine indicato, normalizza varianti regionali e usa l’inglese come fallback. Il selettore Automatico / English / Italiano è disponibile anche al login e nelle modali; la scelta resta nel local storage di quel browser. Cambiarla aggiorna subito testi e notifiche senza riavviare SSE, perdere moduli o tradurre la conversazione.
+
+La precedenza CLI è `--lang` → `ALTERECHO_LANG` → preferenza salvata → locale del sistema → inglese. `auto` al livello scelto richiede il rilevamento del sistema. Gli override non sono salvati; **Impostazioni → Language / Lingua** aggiorna soltanto `client-language.json`, accanto a `client.json`, senza modificare le impostazioni condivise. `alterecho --lang en help` e `alterecho --lang it help` mostrano le due guide.
+
+[Cataloghi JSON, plurali, formattazione, errori e nuove lingue](I18N.it.md). Argomenti, prompt, personalità, risposte, export e checkpoint restano dati originali. Anche un server inglese può servire contemporaneamente client italiani e inglesi.
+
 ## Token del server
 
 Il token di AlterEcho autorizza l’accesso al servizio. È distinto dal login ChatGPT e dalle chiavi OpenAI/OpenRouter. Il browser lo mantiene soltanto in memoria; non inserirlo negli URL o negli screenshot.
@@ -77,7 +87,7 @@ Compose legge `secrets/service-token.txt`: crealo prima dell’avvio, dalla cart
 python -c "from pathlib import Path; import secrets; p=Path('secrets'); p.mkdir(exist_ok=True); f=(p/'service-token.txt').open('x', encoding='utf-8'); f.write(secrets.token_urlsafe(32)); f.close()"
 ```
 
-Senza Python locale puoi usare il runtime Docker per generare il valore: `docker run --rm python:3.12-slim python -c "import secrets; print(secrets.token_urlsafe(32))"`, poi salvalo nel file richiesto. Non utilizzare token di esempio. Il file deve essere leggibile dall’UID 10001 del container e riservato agli account autorizzati; consulta anche la [guida Docker](../deploy/README.md#docker-e-codex-headless).
+Senza Python locale puoi usare il runtime Docker per generare il valore: `docker run --rm python:3.12-slim python -c "import secrets; print(secrets.token_urlsafe(32))"`, poi salvalo nel file richiesto. Non utilizzare token di esempio. Il file deve essere leggibile dall’UID 10001 del container e riservato agli account autorizzati; consulta anche la [guida Docker](../deploy/README.it.md#docker-e-codex-headless).
 
 Su Docker Engine Linux senza rimappatura degli utenti, un esempio di permessi è:
 
@@ -253,7 +263,7 @@ Per servizi/container imposta sempre `ALTERECHO_HOME` assoluto e persistente: no
 
 ## Servizi di sistema
 
-I template non vengono installati o attivati automaticamente. Vedi le procedure in [deploy/README.md](../deploy/README.md): systemd, launchd di sistema e servizio Windows con WinSW. Tutti avviano lo stesso `alterecho serve --foreground`. Esegui il processo con un account dedicato/non amministrativo, directory riservate e Codex autenticato sotto quell'account.
+I template non vengono installati o attivati automaticamente. Vedi le procedure in [deploy/README.md](../deploy/README.it.md): systemd, launchd di sistema e servizio Windows con WinSW. Tutti avviano lo stesso `alterecho serve --foreground`. Esegui il processo con un account dedicato/non amministrativo, directory riservate e Codex autenticato sotto quell'account.
 
 ## Docker
 
@@ -270,7 +280,7 @@ docker compose logs -f alterecho
 
 Compose pubblica **solo `127.0.0.1:8765`** e usa `restart: unless-stopped`. Il login è un'operazione manuale, non un test automatico. Configura il profilo Ollama tramite UI/API con `http://host.docker.internal:11434`, un container su una rete condivisa o un host LAN fidato. Nel container `localhost` identifica il container stesso. Non esporre Ollama senza protezione su una rete non fidata.
 
-I volumi `alterecho_data` e `codex_state` persistono dopo `docker compose down`; **non usare `down -v` per aggiornare**. Lo stato Codex deve essere scrivibile dal suo account per checkpoint e refresh delle credenziali. Non montare l'intera home personale nel container. `CODEX_VERSION` permette di fissare una versione verificata invece del default `latest`.
+I volumi `alterecho_data` e `codex_state` persistono dopo `docker compose down`; **non usare `down -v` per aggiornare**. Lo stato Codex deve essere scrivibile dal suo account per checkpoint e refresh delle credenziali. Non montare l'intera home personale nel container. `CODEX_VERSION` usa il default esplicitamente fissato nel Dockerfile; non usa `latest`.
 
 ## Build e verifica
 
@@ -292,7 +302,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-La suite standard usa provider mock e un app-server Codex simulato. Non consuma quote e non effettua inferenze Ollama. Playwright avvia un backend temporaneo su `127.0.0.1:18876`, con cataloghi e streaming simulati; i risultati sono in `web/test-results/`. La pipeline GitHub Actions comprende Windows/Linux/macOS con Python 3.11–3.13, frontend, browser, wheel/sdist e Docker. La sua esecuzione remota per la 1.1 richiede che l'utente decida di pubblicare le modifiche.
+La suite standard usa provider mock e un app-server Codex simulato. Non consuma quote e non effettua inferenze Ollama. Playwright avvia un backend temporaneo su `127.0.0.1:18876`, con cataloghi e streaming simulati; i risultati sono in `web/test-results/`. La CI ordinaria comprende Windows/Linux/macOS con Python 3.11–3.13, frontend e browser. Soltanto il workflow di release da nuovo tag produce wheel/sdist, standalone e Docker; Playwright può usare Vite in sviluppo con `ALTERECHO_BROWSER_DEV=1`. La sua esecuzione remota per la 1.1 richiede che l'utente decida di pubblicare le modifiche.
 
 Per standalone: `pip install ".[standalone]"`, poi `pyinstaller deploy/alterecho.spec`. Esegui la build sul sistema operativo di destinazione; Codex e Ollama restano dipendenze esterne. Non sono inclusi pesi, home utente o credenziali.
 

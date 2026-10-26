@@ -1,5 +1,7 @@
 # Verifica locale AlterEcho 1.0
 
+[English](VERIFICATION-1.0.md) | **Italiano**
+
 Data: 24 ottobre 2026. Checkout iniziale: main, commit `5ffcb601` (Git locale: `5ffcb60`). Nessun commit, push, pubblicazione, installazione o attivazione di servizi di sistema. Gli storici/configurazioni personali non sono stati migrati o modificati per i test.
 
 ## Risultato e architettura

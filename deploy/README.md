@@ -1,103 +1,101 @@
-# Installazione persistente
+# Persistent installation
 
-## Installazione da GitHub Releases e GHCR
+**English** | [Italiano](README.it.md)
 
-Il workflow di distribuzione è predisposto per il push di nuovi tag `vMAJOR.MINOR.PATCH`. Nessuna nuova release è stata pubblicata da questa revisione. Quando disponibile, scarica gli allegati da [GitHub Releases](https://github.com/giovannirob/AlterEcho/releases) con un account autorizzato e verifica i checksum. La release elenca soltanto gli archivi prodotti e verificati.
+These are procedures to review on the target system, not automatic installation actions. Services run the same `alterecho serve --foreground` with absolute persistent directories and a restricted account. Test foreground startup, back up and configure providers under that account first. [Complete user guide](../docs/GUIDE.md).
 
-Per il wheel, da un ambiente Python 3.11+:
+## Installation from GitHub Releases and GHCR
+
+The release workflow is prepared for new `vMAJOR.MINOR.PATCH` tags. Actual remote publication still needs verification. Once available, use an authorized account to obtain [release assets](https://github.com/giovannirob/AlterEcho/releases) and verify checksums. Only built and tested platforms are listed in a completed release.
 
 ```sh
-python -m pip install "alterecho-1.1.0-py3-none-any.whl[server]"
+python -m pip install "alterecho-1.2.0-py3-none-any.whl[server]"
 alterecho serve
 ```
 
-Gli standalone vanno estratti in una cartella stabile; su Linux/macOS usa `./alterecho serve`, su Windows `./alterecho.exe serve`. Il binario comprende CLI, server e statici, mentre Codex e Ollama restano esterni. Gli archivi Linux richiedono glibc 2.35+; gli archivi macOS non sono firmati o notarizzati. Gatekeeper può richiedere una decisione esplicita dell’utente dopo la verifica della provenienza; non viene disattivato automaticamente.
+Extract standalone archives into a stable directory. Use `./alterecho serve` on Linux/macOS or `./alterecho.exe serve` on Windows. The binary includes CLI, server, Web assets and language catalogs; Codex/Ollama remain external. Linux release builds require glibc 2.35+. macOS binaries are unsigned/not notarized; verify provenance and make an explicit Gatekeeper decision without disabling system protection globally.
 
-Per l’immagine privata GHCR, autenticati come descritto nella [guida release](../docs/RELEASE.md#docker--ghcr), prepara il token del servizio in `secrets/service-token.txt` e usa il file Compose senza build:
+For private GHCR, [authenticate](../docs/RELEASE.md#docker--ghcr), prepare `secrets/service-token.txt`, then use the image-only Compose file:
 
 ```sh
-export ALTERECHO_VERSION=1.1.0
+export ALTERECHO_VERSION=1.2.0
 docker compose -f compose.registry.yaml pull
 docker compose -f compose.registry.yaml up -d --no-build
 docker compose -f compose.registry.yaml logs -f
 docker compose -f compose.registry.yaml stop
 ```
 
-In PowerShell imposta `$env:ALTERECHO_VERSION='1.1.0'`. Usa una versione effettivamente pubblicata; `latest` è aggiornato soltanto dalle stabili. `compose.registry.yaml` mantiene localhost, volumi, secret separato e utente non privilegiato dell’immagine. Conserva lo stesso progetto Compose e fai backup dei volumi durante gli aggiornamenti; non usare `down -v` per aggiornare. Il `compose.yaml` originale rimane disponibile per compilare dal sorgente.
+PowerShell uses `$env:ALTERECHO_VERSION='1.2.0'`. Select an actually published version; only stable releases update `latest`. The image-only Compose file keeps localhost, persistent volumes, a separate token secret and nonroot user. Keep the same Compose project and back up volumes before updates; never use `down -v`. Original `compose.yaml` still builds from source. [Maintainer instructions](../docs/RELEASE.md) cover permissions, tags and failed publications.
 
-La [guida del manutentore](../docs/RELEASE.md) documenta tag, prerelease, permessi, ruleset, GHCR privato e recupero da una pubblicazione fallita. Nessun servizio, permesso remoto o package è stato attivato automaticamente.
+## Local background mode versus services
 
-Queste procedure sono esempi da revisionare sul sistema di destinazione. Non vengono eseguite dall'installazione del pacchetto. Tutte avviano `alterecho serve --foreground`, con directory assolute e un account con permessi limitati. Prima verifica in primo piano, effettua un backup e configura Codex/Ollama sotto l'account corretto.
+Since 1.1, plain `serve` starts in background, reports URL/PID/log and survives terminal closure; `down` stops that verified local instance. This does not enable startup at boot. Services explicitly use **`serve --foreground`** and their own stop command. `down` does not control systemd, launchd, WinSW or Docker instances. Do not delete leases while active.
+
+Background logs live in the data directory under `logs/server.log`. Supervisor logs use its configured files/journal. Language preferences belong to individual clients, not the service: a service's English diagnostic details can be displayed by an Italian CLI/browser.
 
 ## Linux / systemd
 
-Dalla versione 1.1 `serve` da solo è detached: i template usano esplicitamente **`serve --foreground`** per lasciare il controllo al supervisore. Per prove locali senza installare servizi puoi usare `alterecho serve`, consultare URL/PID/log nell’output e arrestare con `alterecho down`. Questa modalità sopravvive al terminale ma non abilita l’avvio al boot. I log sono nella directory dati `logs/server.log`; sotto un supervisore restano nei percorsi/journal configurati dal supervisore stesso.
-
-`down` non arresta istanze avviate in foreground da systemd, launchd, WinSW o Docker: usa i comandi riportati sotto. Non cancellare i file di lease mentre il server è attivo.
-
-Esempio per una distribuzione con `useradd` e Python 3.11+, eseguito dall'amministratore dopo revisione:
+Administrator-reviewed example for a distribution with `useradd` and Python 3.11+:
 
 ```sh
 sudo useradd --system --home /var/lib/alterecho --shell /usr/sbin/nologin alterecho
 sudo install -d -o alterecho -g alterecho -m 0700 /var/lib/alterecho /var/lib/alterecho-codex
 sudo install -d -m 0755 /opt/alterecho
 sudo python3 -m venv /opt/alterecho/venv
-sudo /opt/alterecho/venv/bin/pip install '/percorso/alterecho-1.1.0-py3-none-any.whl[server]'
+sudo /opt/alterecho/venv/bin/pip install '/path/alterecho-1.2.0-py3-none-any.whl[server]'
 sudo install -d -m 0750 /etc/alterecho
 sudo install -m 0644 deploy/systemd/alterecho.service /etc/systemd/system/alterecho.service
 ```
 
-Copia `server.env.example` in `/etc/alterecho/server.env` e modifica i valori. Se contiene segreti, usa `0600 root:root` (systemd lo legge prima di cambiare utente). Installa Codex in un percorso accessibile e configura `codex_binary` nel file `/var/lib/alterecho/config/config.json`, oppure PATH nel file dell'ambiente. Esegui il login ufficiale con `CODEX_HOME=/var/lib/alterecho-codex` come account `alterecho`; non avviare inferenze per provarlo.
+Copy `server.env.example` to `/etc/alterecho/server.env` and edit it. Secret-containing environment files should be `0600 root:root`; systemd reads them before switching accounts. Install Codex in an accessible location, configure `codex_binary` in `/var/lib/alterecho/config/config.json` or PATH in the environment file. Perform official login as `alterecho` with `CODEX_HOME=/var/lib/alterecho-codex`; do not run inference for diagnostics.
 
-Solo quando la configurazione è stata verificata:
+After validating configuration:
 
 ```sh
 sudo systemctl daemon-reload
 sudo systemctl enable --now alterecho
 sudo systemctl status alterecho
 sudo journalctl -u alterecho -f
-# Arresto ordinato:
 sudo systemctl stop alterecho
 ```
 
-`ProtectHome=true` impedisce di usare accidentalmente la home interattiva. Se gli storici sono fuori dalle directory previste, copia/migra esplicitamente i dati e aggiorna configurazione e `ReadWritePaths` dopo aver verificato permessi e backup.
+`ProtectHome=true` prevents accidental use of an interactive home. For histories outside permitted directories, explicitly migrate/copy after backup, update configuration and `ReadWritePaths`, and verify permissions.
 
-## macOS / launchd di sistema
+## macOS / system launchd
 
-Usa un account di servizio `_alterecho` creato dall'amministratore secondo le procedure del Mac. Non usare un LaunchAgent utente se vuoi funzionamento senza login desktop.
+Use a service account `_alterecho` created by an administrator according to the Mac's policies. A user LaunchAgent does not provide operation without desktop login.
 
-1. Crea `/var/lib/alterecho` e `/var/lib/alterecho-codex`, proprietario `_alterecho`, permessi `0700`.
-2. Installa il wheel con extra `server` nel virtualenv `/opt/alterecho/venv`.
-3. Installa e autentica Codex per l'account del servizio con home esplicita. Verifica percorsi del binario e PATH (Homebrew ARM e Intel differiscono).
-4. Adatta `deploy/launchd/org.alterecho.server.plist`. Per accesso di rete aggiungi token-file, origini e host in `EnvironmentVariables`; non inserire valori segreti in un plist pubblico.
-5. Prepara file di log riservati all'account del servizio e installa il plist come `root:wheel`, `0644`, in `/Library/LaunchDaemons/`.
+1. Create `/var/lib/alterecho` and `/var/lib/alterecho-codex`, owned by `_alterecho`, mode `0700`.
+2. Install the wheel with `server` extra into `/opt/alterecho/venv`.
+3. Install/authenticate Codex for that account using explicit home. Verify binary/PATH: Homebrew ARM/Intel locations differ.
+4. Adapt `deploy/launchd/org.alterecho.server.plist`. For network access, add token-file, origins and hosts in `EnvironmentVariables`; never place secret values in a public plist.
+5. Prepare private writable logs. Install the plist as `root:wheel`, mode `0644`, under `/Library/LaunchDaemons/`.
 
 ```sh
 sudo plutil -lint /Library/LaunchDaemons/org.alterecho.server.plist
 sudo launchctl bootstrap system /Library/LaunchDaemons/org.alterecho.server.plist
 sudo launchctl print system/org.alterecho.server
-# Arresto/rimozione dal dominio launchd:
 sudo launchctl bootout system /Library/LaunchDaemons/org.alterecho.server.plist
 ```
 
-Il template abilita `RunAtLoad` e `KeepAlive`. La creazione dell'account e l'installazione launchd non sono state eseguite da questo lavoro.
+The template enables `RunAtLoad` and `KeepAlive`. Service account creation and native launchd installation have not been tested locally by this work.
 
 ## Windows / WinSW
 
-Usa una release ufficiale WinSW compatibile con il formato XML del template, da [winsw/winsw](https://github.com/winsw/winsw). La configurazione dell'account segue la [documentazione ufficiale WinSW](https://github.com/winsw/winsw/blob/v3/docs/xml-config-file.md). Non viene scaricato o installato automaticamente alcun wrapper.
+Use an official [WinSW release](https://github.com/winsw/winsw) compatible with the template XML. Follow its [service-account documentation](https://github.com/winsw/winsw/blob/v3/docs/xml-config-file.md). No wrapper is downloaded/installed automatically.
 
-Esempio di preparazione (PowerShell amministrativa, percorsi da verificare):
+Example preparation in an administrator PowerShell, after reviewing paths:
 
 ```powershell
 python -m venv C:\ProgramData\AlterEcho\venv
-C:\ProgramData\AlterEcho\venv\Scripts\python.exe -m pip install 'C:\pacchetti\alterecho-1.1.0-py3-none-any.whl[server]'
+C:\ProgramData\AlterEcho\venv\Scripts\python.exe -m pip install 'C:\packages\alterecho-1.2.0-py3-none-any.whl[server]'
 ```
 
-Metti il binario WinSW come `C:\ProgramData\AlterEcho\AlterEcho.exe` e copia `windows/AlterEcho.xml` accanto con lo stesso nome base. Crea `state`, `codex` e `logs`. Il template usa **LocalService**, non LocalSystem. Configura ACL: LocalService deve poter modificare solo directory dati/Codex/log; la directory del programma va protetta da modifiche non amministrative. Per un account dedicato modifica `serviceaccount` secondo la versione WinSW utilizzata e concedi il diritto di accesso come servizio. Evita password in chiaro in file condivisi.
+Place WinSW at `C:\ProgramData\AlterEcho\AlterEcho.exe` and copy `windows/AlterEcho.xml` beside it with the matching base name. Create `state`, `codex` and `logs`. The template uses **LocalService**, not LocalSystem. ACLs should allow LocalService to modify only data/Codex/log directories; protect program files from nonadministrative modification. For a dedicated account, adapt `serviceaccount` to the selected WinSW version and grant service logon rights. Do not store plain passwords in shared files.
 
-Codex deve essere installato in un percorso accessibile al servizio, con `codex_binary` esplicito se necessario. Il login ChatGPT dell'utente desktop non equivale al login del servizio: usa la directory Codex dedicata e la procedura ufficiale di autenticazione/trasferimento sicuro; non pubblicare mai `auth.json`. Prima verifica che il servizio abbia accesso al suo token locale, alle sessioni e ai modelli selezionati.
+Codex must be accessible to that service, with explicit `codex_binary` if needed. Desktop ChatGPT login is not service login: use dedicated protected Codex state and official authentication/secure transfer, never publish `auth.json`. Verify token, session and model access under the service account.
 
-Comandi **manuali**, dopo revisione:
+Manual commands, after review:
 
 ```powershell
 C:\ProgramData\AlterEcho\AlterEcho.exe install
@@ -106,11 +104,11 @@ C:\ProgramData\AlterEcho\AlterEcho.exe status
 C:\ProgramData\AlterEcho\AlterEcho.exe stop
 ```
 
-WinSW inoltra l'arresto al processo console e concede il timeout configurato; verifica il comportamento di stop con la release e l'account scelti prima di usarlo in produzione. Un servizio non richiede un desktop aperto. Non confondere il wrapper `AlterEcho.exe` in ProgramData con lo standalone del pacchetto.
+WinSW forwards shutdown to the console process with its configured timeout. Validate stop behavior for the actual release/account before production. No desktop session is required. The wrapper in ProgramData is distinct from the packaged standalone executable.
 
-## Docker e Codex headless
+## Docker and headless Codex
 
-Da checkout, genera un token casuale in `secrets/service-token.txt`; il file è escluso dalla build. Verifica che l'UID 10001 possa leggerlo nel container. Su Linux proteggi file e directory rispetto agli altri utenti ma concedi la lettura al gruppo/UID appropriato; il backend deve poter leggere il secret. Non rendere leggibili globalmente credenziali Codex.
+Generate `secrets/service-token.txt` in the checkout; it is excluded from the image. Confirm UID 10001 can read it and other users cannot. [Token generation/permissions](../docs/GUIDE.md#prepare-the-docker-token). Do not make Codex credentials globally readable.
 
 ```sh
 docker compose build
@@ -119,14 +117,14 @@ docker compose exec alterecho codex login --device-auth
 docker compose ps
 ```
 
-Il device login richiede abilitazione nelle impostazioni dell'account/workspace; vedi [OpenAI authentication](https://learn.chatgpt.com/docs/auth). Il volume `codex_state` conserva credenziali e sessioni e deve essere scrivibile per refresh e checkpoint. Nessun file di autenticazione è copiato nell'immagine.
+Device login must be enabled by account/workspace policy; see [official authentication](https://learn.chatgpt.com/docs/auth). `codex_state` preserves credentials and sessions and must be writable for refresh/checkpoints. No authentication file is baked into the image.
 
-Puoi usare Ollama sull'host (`host.docker.internal`), su un container separato collegato alla stessa rete (`ollama`) o in LAN. Aggiorna `ALTERECHO_OLLAMA_HOSTS` e il profilo, senza aprire automaticamente Ollama alla rete. Le chiavi OpenAI/OpenRouter si possono passare all'ambiente del container usando un file dell'ambiente protetto, escluso dal controllo versione.
+Ollama may run on the host (`host.docker.internal`), another container on a shared network (`ollama`) or a trusted LAN server. Update `ALTERECHO_OLLAMA_HOSTS` and the profile; do not expose Ollama automatically. OpenAI/OpenRouter keys can enter the server container through a protected, untracked environment file.
 
-Per un proxy in un container separato usa una rete Docker privata condivisa e non pubblicare la porta applicativa all'esterno. Consenti l'hostname necessario in `ALTERECHO_ALLOWED_HOSTS`, il dominio HTTPS esatto in `ALTERECHO_ORIGINS` e solo gli IP proxy realmente fidati.
+For a separate proxy container use a shared private Docker network without exposing the application port externally. Allow the required hostname, exact HTTPS origin and only actual trusted proxy IPs. Catalogs are packaged locally and need no runtime network access for translation.
 
-## Aggiornamento e backup
+## Updates and backup
 
-Arresta ordinatamente, copia dati/configurazione e volume Codex con strumenti adatti e accesso riservato, aggiorna il pacchetto/immagine e riavvia. Non usare `compose down -v` per un aggiornamento. Mantieni un backup dei JSON e dei percorsi precedenti; la migrazione di directory è esplicita e non riscrive gli storici.
+Stop gracefully, securely back up data/config and Codex volumes, update the package/image and restart. Never use `compose down -v` for upgrades. Keep previous JSON/path backups; directory migration is explicit and never rewrites histories.
 
-Lo standalone si costruisce con `python -m PyInstaller deploy/alterecho.spec`, dopo la build frontend. Ogni OS richiede una propria build; non include Codex, Ollama o modelli. Il pacchetto Python rimane il percorso principale di installazione.
+Standalone builds use `python -m PyInstaller deploy/alterecho.spec` after frontend build. Each OS needs its own build; no Codex, Ollama or models are bundled. Python packages remain the primary installation route. Native Linux/macOS services remain prepared rather than locally certified; [verification reports](../docs/VERIFICATION-I18N.md) distinguish actual tests from pending checks.

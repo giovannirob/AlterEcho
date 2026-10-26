@@ -1,5 +1,7 @@
 # Verifica AlterEcho 1.1
 
+[English](VERIFICATION-1.1.md) | **Italiano**
+
 Verifiche locali del **26 ottobre 2026**, eseguite prima del commit e del tag locale della 1.1.0 autorizzati successivamente; pacchetti e immagini sono stati costruiti solo localmente, senza push, pubblicazioni o release remote. Il [resoconto originale 1.0](VERIFICA-1.0.md) rimane disponibile come documento storico.
 
 ## Architettura e comportamento

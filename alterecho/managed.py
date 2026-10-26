@@ -4,6 +4,7 @@ An OS lease serializes launch/down; the server's existing leases own the data.
 A private, nonce-authenticated loopback control channel identifies the live
 instance, never a PID alone. No signals or force kills are sent to stored PIDs.
 """
+from .i18n import t
 import asyncio
 import json
 import os
@@ -39,7 +40,7 @@ class ExitHandle:
 
     def wait(self, timeout):
         if self.handle and self.kernel.WaitForSingleObject(self.handle, max(1, int(timeout * 1000))) != 0:
-            raise BridgeError("Checkpoint salvati, ma il processo non è ancora terminato. Nessuna terminazione forzata.")
+            raise BridgeError(t('managed.checkpoints_saved_but_the_process_has_not_exited_yet_no_forced_termination'))
 
     def close(self):
         if self.handle:
@@ -62,7 +63,7 @@ def read_metadata(settings):
     except FileNotFoundError:
         return None
     except (ValueError, TypeError, AttributeError):
-        raise BridgeError("Metadati del server non validi: nessun processo è stato terminato.")
+        raise BridgeError(t('managed.invalid_server_metadata_no_process_was_terminated'))
 
 
 def control(meta, operation="identity"):
@@ -168,7 +169,7 @@ def background(host=None, port=None, timeout=30):
     try:
         meta = read_metadata(settings)
         if meta and control(meta):
-            raise BridgeError(f"Server locale già avviato (PID {meta['pid']}). Usa alterecho status / down.")
+            raise BridgeError(t('managed.local_server_already_running_pid_use_alterecho_status_down' ,p0=meta['pid']))
         # Only remove stale metadata after proving no server owns the data lease.
         data_lease = ServerLease(settings.runtime / "server.lock")
         data_lease.acquire()
@@ -214,7 +215,7 @@ def background(host=None, port=None, timeout=30):
         with httpx.Client(timeout=1, trust_env=False) as client:
             while time.monotonic() < deadline:
                 if process.poll() is not None:
-                    raise BridgeError(f"Avvio fallito (codice {process.returncode}). Consulta {log}.")
+                    raise BridgeError(t('managed.startup_failed_code_see' ,p0=process.returncode, p1=log))
                 meta = read_metadata(settings)
                 if meta and meta["instance"] == instance and control(meta):
                     try:
@@ -232,7 +233,7 @@ def background(host=None, port=None, timeout=30):
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass  # The child's unadopted-instance watchdog remains responsible.
-        raise BridgeError(f"Timeout di avvio; successo non confermato. Consulta {log}; verifica alterecho status / down.")
+        raise BridgeError(t('managed.startup_timed_out_success_not_confirmed_see_check_alterecho_status_down' ,p0=log))
     finally:
         lease.release()
 
@@ -251,12 +252,12 @@ def down(timeout=45):
                     remove_owned(settings, meta["instance"])
             finally:
                 data_lease.release()
-            raise BridgeError("Nessun server locale gestito raggiungibile. Per Docker/systemd/launchd/WinSW usa il relativo supervisore; nessun processo è stato terminato.")
+            raise BridgeError(t('managed.no_managed_local_server_reachable_use_the_supervisor_for_docker_systemd_launchd_winsw_no_proces'))
         handle = ExitHandle(meta["pid"])
         deadline = time.monotonic() + timeout
         try:
             if not control(meta, "stop"):
-                raise BridgeError("Identità del server non verificata; arresto non inviato.")
+                raise BridgeError(t('managed.server_identity_not_verified_shutdown_not_sent'))
             while time.monotonic() < deadline:
                 current = read_metadata(settings)
                 if not current or current["instance"] != meta["instance"]:
@@ -266,11 +267,11 @@ def down(timeout=45):
                         try:
                             child.wait(timeout=max(.1, deadline - time.monotonic()))
                         except subprocess.TimeoutExpired:
-                            raise BridgeError("Il launcher Python non è ancora terminato; nessuna terminazione forzata.")
+                            raise BridgeError(t('managed.python_launcher_has_not_exited_yet_no_forced_termination'))
                     return meta["pid"]
                 time.sleep(.1)
         finally:
             handle.close()
-        raise BridgeError("Arresto ancora in corso: checkpoint o provider non terminati. Consulta i log. Nessuna terminazione forzata eseguita.")
+        raise BridgeError(t('managed.shutdown_still_in_progress_checkpoints_or_providers_have_not_finished_check_the_logs_no_forced'))
     finally:
         lease.release()

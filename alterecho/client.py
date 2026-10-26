@@ -1,4 +1,5 @@
 """HTTP-only clients. Importing this module never loads a provider or engine."""
+from .i18n import t, catalogs
 import json
 import os
 from pathlib import Path
@@ -22,7 +23,7 @@ class Connection:
         self.server = (server or os.environ.get("ALTERECHO_SERVER") or saved.get("server") or "http://127.0.0.1:8765").rstrip("/")
         u = urlsplit(self.server)
         if u.scheme not in {"http", "https"} or not u.hostname or u.username or u.password or u.query or u.fragment or u.path not in {"", "/"}:
-            raise BridgeError("Indirizzo server non valido: usa http(s)://host:porta.")
+            raise BridgeError(t('client.invalid_server_address_use_http_s_host_port'))
         self.token = token if token is not None else os.environ.get("ALTERECHO_TOKEN", "")
         token_file = os.environ.get("ALTERECHO_TOKEN_FILE") or saved.get("token_file")
         if not self.token and token_file:
@@ -37,7 +38,7 @@ class Connection:
         if token_file:
             file = Path(token_file).expanduser().resolve()
             if not file.is_file():
-                raise BridgeError("File del token non trovato.")
+                raise BridgeError(t('client.token_file_not_found'))
             values["token_file"] = str(file)
         atomic_write(self.path, json.dumps(values, indent=2))
 
@@ -58,17 +59,18 @@ class APIClient:
             self.check(response)
             return response
         except httpx.HTTPError as e:
-            raise BridgeError(f"Avvia 'alterecho serve' oppure configura --server / ALTERECHO_SERVER.\nServer AlterEcho non raggiungibile a {self.connection.server}.") from e
+            raise BridgeError(t('client.run_alterecho_serve_or_configure_server_alterecho_server_alterecho_server_unreachable_at' ,p0=self.connection.server)) from e
 
     @staticmethod
     def check(response):
         if response.is_error:
             try:
-                detail = response.json().get("detail", "Richiesta rifiutata.")
+                data = response.json()
+                detail = t(data['code'], **data.get('params', {})) if data.get('code') in catalogs()['en'] else data.get("detail", t('client.request_rejected'))
             except ValueError:
-                detail = "Risposta del server non valida."
+                detail = t('client.invalid_server_response')
             if response.status_code == 401:
-                detail = "Token del servizio assente o non valido. Configura ALTERECHO_TOKEN oppure 'alterecho connect --token-file FILE'."
+                detail = t('client.missing_or_invalid_service_token_configure_alterecho_token_or_alterecho_connect_token_file_file')
             raise BridgeError(str(detail))
 
     def get(self, path):
@@ -95,7 +97,7 @@ class APIClient:
                         yield json.loads("\n".join(data))
                         data.clear()
         except httpx.HTTPError as e:
-            raise BridgeError("Stream disconnesso; la conversazione continua sul server.") from e
+            raise BridgeError(t('client.stream_disconnected_the_conversation_continues_on_the_server')) from e
 
 
 class ClientConfig(Config):
@@ -157,7 +159,7 @@ class RemoteCatalog:
         data = []
         for p in profiles:
             if p.get("binary") not in {"", "codex"}:
-                raise BridgeError("Configura l'eseguibile Codex direttamente sul server.")
+                raise BridgeError(t('client.configure_the_codex_executable_directly_on_the_server'))
             data.append({k: v for k, v in p.items() if k not in {"binary", "billable"}})
         self.client.put("/profiles", {"profiles": data})
 

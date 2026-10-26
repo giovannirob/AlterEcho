@@ -9,22 +9,22 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --yes) assume_yes=1 ;;
         --no-path) no_path=1 ;;
-        --install-dir) shift; install_dir=${1:?Manca la cartella} ;;
-        *) echo "Opzione non valida: $1" >&2; exit 2 ;;
+        --install-dir) shift; install_dir=${1:?Directory required} ;;
+        *) echo "Invalid option: $1" >&2; exit 2 ;;
     esac
     shift
 done
-case "$install_dir" in /*) ;; *) echo 'La cartella deve essere assoluta.' >&2; exit 2 ;; esac
+case "$install_dir" in /*) ;; *) echo 'The directory must be absolute.' >&2; exit 2 ;; esac
 python_path="$project_root/.venv/bin/python"
-[ -x "$python_path" ] || { echo 'Prima crea .venv e installa il progetto con pip install -e .' >&2; exit 1; }
+[ -x "$python_path" ] || { echo 'First create .venv and install the project with pip install -e .' >&2; exit 1; }
 echo "Launcher: $install_dir/alterecho"
 if [ "$no_path" = 0 ]; then
-    echo 'Aggiunge la cartella al PATH utente in .profile e nel file della shell (Bash/Zsh). Nessun sudo.'
+    echo 'Adds the directory to user PATH in .profile and the shell file (Bash/Zsh). No sudo.'
 fi
 if [ "$assume_yes" = 0 ]; then
-    printf 'Installare? [s/N] '
+    printf 'Install? [y/N] '
     read -r answer
-    case "$answer" in s|S|si|sì) ;; *) echo 'Installazione annullata.'; exit 0 ;; esac
+    case "$answer" in y|Y|yes|s|S|si|sì) ;; *) echo 'Installation cancelled.'; exit 0 ;; esac
 fi
 # Single-quote escaping keeps spaces, dollars and apostrophes literal in launchers/profiles.
 quote_shell() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
@@ -46,5 +46,5 @@ if [ "$no_path" = 0 ]; then
         fi
     done
 fi
-echo 'Installazione riuscita. Apri un nuovo terminale: alterecho. Guida: alterecho help.'
-echo 'Se sposti il progetto, ricrea il virtualenv e ripeti questa installazione.'
+echo 'Installation succeeded. Open a new terminal: alterecho. Help: alterecho help.'
+echo 'After moving the project, recreate the virtualenv and reinstall.'

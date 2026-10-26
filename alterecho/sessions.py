@@ -1,4 +1,5 @@
 """Server-owned tasks, native provider sessions, canonical persistence and replay."""
+from .i18n import message as t, error_info
 import asyncio
 from copy import deepcopy
 from dataclasses import asdict
@@ -80,7 +81,7 @@ class SessionManager:
         if cid not in self.loaded:
             self.refresh()
         if cid in getattr(self, "duplicates", set()):
-            raise Conflict("ID duplicato in più storici; risolvere la duplicazione prima di operare.")
+            raise Conflict(t('sessions.duplicate_id_in_multiple_histories_resolve_the_duplicate_before_proceeding'))
         if cid not in self.loaded:
             raise KeyError(cid)
         return self.loaded[cid]
@@ -98,7 +99,7 @@ class SessionManager:
         stats = summarize(c)
         stats["speakers"] = {LETTERS[s]: v for s, v in stats["speakers"].items()}
         return {"id": c.id, "created_at": c.created_at, "config": public_config(cfg),
-                "status": status, "error": safe_error(c.error, providers.effective_pair(cfg).values()) if c.error else None, "messages": [public_message(m) for m in c.messages],
+                "status": status, "error": safe_error(c.error, providers.effective_pair(cfg).values()) if c.error else None, "error_info": error_info(safe_error(c.error, providers.effective_pair(cfg).values())) if c.error else {}, "messages": [public_message(m) for m in c.messages],
                 "partial": partial, "stats": stats, "active": cid in self.tasks,
                 "pause_requested": cid in self.pauses, "demo": bool(c.messages and c.messages[0].model.startswith("mock-"))}
 
@@ -120,6 +121,8 @@ class SessionManager:
 
     def emit(self, cid, kind, data=None):
         data = deepcopy(data or {})
+        if data.get('error'):
+            data['error_info'] = error_info(data['error'])
         if "speaker" in data:
             data["speaker"] = LETTERS.get(data["speaker"], data["speaker"])
         if "message" in data:
@@ -136,11 +139,11 @@ class SessionManager:
         participants = values.pop("participants", None)
         if participants is not None:
             if set(participants) != {"A", "B"}:
-                raise BridgeError("Seleziona entrambi gli interlocutori A e B.")
+                raise BridgeError(t('sessions.select_both_participants_a_and_b'))
             profiles = {p["id"]: p for p in self.catalog.load(cfg)}
             for letter, selection in participants.items():
                 if selection["profile_id"] not in profiles:
-                    raise BridgeError("Profilo non registrato sul server.")
+                    raise BridgeError(t('sessions.profile_not_registered_on_the_server'))
                 cfg.adapter_pair[SLOTS[letter]] = deepcopy(profiles[selection["profile_id"]])
                 cfg.adapter_pair[SLOTS[letter]]["model"] = selection["model"]
         for name, value in values.items():
@@ -153,7 +156,7 @@ class SessionManager:
 
     def require_paid(self, cfg, confirmation):
         if any(p["provider"] in {"openai", "openrouter"} for p in providers.effective_pair(cfg).values()) and not confirmation:
-            raise BridgeError("Provider API a consumo: conferma esplicita richiesta (confirm_paid=true / --confirm-paid).")
+            raise BridgeError(t('sessions.metered_api_provider_explicit_confirmation_required_confirm_paid_true_confirm_paid'))
 
     async def diagnose(self):
         profiles = self.catalog.load(self.config)
@@ -173,7 +176,7 @@ class SessionManager:
                                "models": models, "checked_at": now()})
             except Exception as e:
                 result.append({"profile_id": profile["id"], "name": profile["name"], "provider": profile["provider"], "available": False,
-                               "models": [], "error": safe_error(e, [profile]) if isinstance(e, BridgeError) else "Provider non raggiungibile.", "checked_at": now()})
+                               "models": [], "error": safe_error(e, [profile]) if isinstance(e, BridgeError) else t('errors.provider_unreachable'), "checked_at": now(), "error_info": error_info(safe_error(e, [profile]))})
             finally:
                 await providers.close_adapters(adapters)
         self.provider_status = {r["profile_id"]: r for r in result}
@@ -186,7 +189,7 @@ class SessionManager:
             if not request.demo:
                 self.require_paid(cfg, request.confirm_paid)
                 if any(not p["model"] for p in cfg.adapter_pair.values()):
-                    raise BridgeError("Scegli un modello per entrambi gli interlocutori.")
+                    raise BridgeError(t('sessions.choose_a_model_for_both_participants'))
             else:
                 cfg.codex_model, cfg.ollama_model = "mock-codex", "mock-ollama"
             c = Conversation(cfg.to_dict())
@@ -199,9 +202,9 @@ class SessionManager:
 
     def check_capacity(self):
         if self.closing:
-            raise Conflict("Server in arresto.")
+            raise Conflict(t('sessions.server_shutting_down'))
         if len(self.tasks) >= self.settings.max_active:
-            raise Conflict("Limite di conversazioni attive raggiunto.")
+            raise Conflict(t('sessions.active_conversation_limit_reached'))
 
     def backup(self, cid):
         store = self.stores[cid]
@@ -213,11 +216,11 @@ class SessionManager:
         async with self.lock:
             c = deepcopy(self.get(cid))
             if cid in self.tasks:
-                raise Conflict("Conversazione già attiva.")
+                raise Conflict(t('sessions.conversation_already_active'))
             if c.messages and any(m.model.startswith("mock-") for m in c.messages):
-                raise BridgeError("Gli storici demo non possono essere ripresi con modelli reali.")
+                raise BridgeError(t('sessions.demo_histories_cannot_be_resumed_with_real_models'))
             if c.codex_thread_id and c.codex_thread_id in self.active_threads:
-                raise Conflict("Thread Codex già utilizzato da un'altra conversazione.")
+                raise Conflict(t('sessions.codex_thread_already_used_by_another_conversation'))
             cfg = providers.normalize_config(resumed_config(c, self.stores[cid].path))
             adapters = providers.build_adapters(cfg)
             try:
@@ -234,18 +237,18 @@ class SessionManager:
             self.check_capacity()
             c = self.get(cid)
             if cid in self.tasks:
-                raise Conflict("Conversazione già attiva.")
+                raise Conflict(t('sessions.conversation_already_active'))
             if c.messages and any(m.model.startswith("mock-") for m in c.messages):
-                raise BridgeError("Gli storici demo non possono essere ripresi con modelli reali.")
+                raise BridgeError(t('sessions.demo_histories_cannot_be_resumed_with_real_models'))
             if c.codex_thread_id and c.codex_thread_id in self.active_threads:
-                raise Conflict("Thread Codex già utilizzato da un'altra conversazione.")
+                raise Conflict(t('sessions.codex_thread_already_used_by_another_conversation'))
             cfg = providers.normalize_config(resumed_config(c, self.stores[cid].path))
             cfg.max_turns = request.max_turns
             if request.num_ctx is not None:
                 cfg.num_ctx = request.num_ctx
             cfg.validate()
             if cfg.max_turns <= len(c.messages):
-                raise BridgeError("Il nuovo massimo deve superare i messaggi salvati.")
+                raise BridgeError(t('sessions.new_maximum_must_exceed_saved_messages'))
             self.require_paid(cfg, request.confirm_paid)
             self.backup(cid)
             self.pauses.discard(cid)
@@ -272,12 +275,12 @@ class SessionManager:
                     models = await providers.catalog(adapter, p)
                     values = [m["model"] for m in models] if p["provider"] == "codex" else models
                     if p["model"] not in values:
-                        raise BridgeError(f"{p['name']}: modello non disponibile nel catalogo.")
+                        raise BridgeError(t('sessions.model_unavailable_in_the_catalog' ,p0=p['name']))
                     if p["provider"] == "codex":
                         await adapter.attach(c, lambda: self.stores[c.id].save(c))
                         if c.codex_thread_id != thread:
                             if c.codex_thread_id in self.active_threads:
-                                raise Conflict("Thread Codex già in uso.")
+                                raise Conflict(t('sessions.codex_thread_already_in_use'))
                             self.active_threads.add(c.codex_thread_id)
                             owned_threads.add(c.codex_thread_id)
                     elif p["provider"] == "ollama":
@@ -291,7 +294,7 @@ class SessionManager:
                 self.emit(c.id, "conversation.stopped", {"status": "interrupted"})
             c.status = "interrupted"
         except Exception as e:
-            c.status, c.error = "failed", safe_error(e, cfg.adapter_pair.values()) if isinstance(e, BridgeError) else "Errore interno del provider; checkpoint conservato."
+            c.status, c.error = "failed", safe_error(e, cfg.adapter_pair.values()) if isinstance(e, BridgeError) else t('errors.internal_provider')
             self.emit(c.id, "conversation.failed", {"status": c.status, "error": c.error})
         finally:
             try:
@@ -299,7 +302,7 @@ class SessionManager:
                 self.stores[c.id].save(c)
                 self.stores[c.id].export(c)
             except Exception:
-                c.status, c.error = "failed", "Salvataggio o export non riuscito: verifica spazio e permessi del server."
+                c.status, c.error = "failed", t('errors.save_failed')
                 self.emit(c.id, "conversation.failed", {"status": c.status, "error": c.error})
             finally:
                 self.tasks.pop(c.id, None)

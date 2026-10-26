@@ -1,5 +1,6 @@
-include README.md ARCHITETTURA.md CHANGELOG.md config.example.toml
+include README.md README.it.md ARCHITECTURE.md ARCHITETTURA.md CHANGELOG.md CHANGELOG.it.md config.example.toml
 recursive-include alterecho/static *
+recursive-include alterecho/locales *.json
 recursive-include alterecho/exporters/templates *
 recursive-include web/src *.svelte *.ts *.css
 include web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json web/index.html

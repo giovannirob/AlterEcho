@@ -1,3 +1,4 @@
+from .i18n import message as t
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -9,7 +10,7 @@ from .paths import data_dir, conversations_dir
 
 
 class BridgeError(Exception):
-    """Errore operativo che deve arrestare il ciclo."""
+    """Operational error that must stop the current operation."""
 
 
 @dataclass
@@ -46,52 +47,52 @@ class Config:
 
     def validate(self):
         if not isinstance(self.adapter_pair, dict):
-            raise BridgeError("adapter_pair deve essere una tabella.")
+            raise BridgeError(t('config.adapter_pair_must_be_a_table'))
         if self.adapter_pair:
             from .integrations import validate_profile
             if set(self.adapter_pair) != {"codex", "ollama"}:
-                raise BridgeError("Seleziona entrambi gli interlocutori A e B.")
+                raise BridgeError(t('config.select_both_participants_a_and_b'))
             for profile in self.adapter_pair.values():
                 validate_profile(profile)
             if self.adapter_pair["ollama"]["provider"] == "codex":
-                raise BridgeError("Codex CLI può occupare soltanto la posizione A.")
+                raise BridgeError(t('config.codex_cli_can_only_occupy_position_a'))
             if sum(p["provider"] == "ollama" for p in self.adapter_pair.values()) > 1:
-                raise BridgeError("È consentito un solo modello Ollama per dialogo.")
+                raise BridgeError(t('config.only_one_ollama_model_is_allowed_per_conversation'))
         # A deliberate subset of Ollama's native duration/seconds formats.
         value = self.ollama_keep_alive
         if not ((type(value) is int and value in (-1, 0)) or
                 (type(value) is str and value in ("5m", "10m"))):
-            raise BridgeError('ollama_keep_alive deve essere -1, 0, "5m" o "10m".')
+            raise BridgeError(t('config.ollama_keep_alive_must_be_1_0_5m_or_10m'))
         if type(self.ollama_unload_on_exit) is not bool:
-            raise BridgeError("ollama_unload_on_exit deve essere true o false.")
+            raise BridgeError(t('config.ollama_unload_on_exit_must_be_true_or_false'))
         for name in ("topic", "codex_model", "codex_binary", "codex_home", "ollama_model", "ollama_url", "output_dir", "codex_work_dir"):
             if not isinstance(getattr(self, name), str):
-                raise BridgeError(f"{name} deve essere un testo.")
+                raise BridgeError(t('config.must_be_text' ,p0=name))
         if self.mode not in {"free", "debate", "blind"} or self.first not in {"codex", "ollama"}:
-            raise BridgeError("Modalità o primo interlocutore non validi.")
+            raise BridgeError(t('config.invalid_mode_or_first_participant'))
         for name in ("max_turns", "num_ctx", "num_predict", "api_max_output_tokens"):
             value = getattr(self, name)
             if type(value) is not int or value <= 0:
-                raise BridgeError(f"{name} deve essere un intero positivo.")
+                raise BridgeError(t('config.must_be_a_positive_integer' ,p0=name))
         if self.num_predict + 256 >= self.num_ctx:
-            raise BridgeError("num_ctx deve lasciare spazio per input, risposta e margine (256).")
+            raise BridgeError(t('config.num_ctx_must_leave_room_for_input_response_and_margin_256'))
         for name in ("timeout", "delay", "temperature"):
             value = getattr(self, name)
             if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
-                raise BridgeError(f"{name} non valido.")
+                raise BridgeError(t('config.invalid' ,p0=name))
         if self.timeout <= 0 or not self.topic.strip():
-            raise BridgeError("Timeout positivo e argomento non vuoto richiesti.")
+            raise BridgeError(t('config.a_positive_timeout_and_nonempty_topic_are_required'))
         if not self.output_dir or not self.codex_work_dir:
-            raise BridgeError("Cartelle dei salvataggi e delle sessioni non valide.")
+            raise BridgeError(t('config.invalid_storage_or_session_directories'))
         if self.codex_effort not in {"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"}:
-            raise BridgeError("Livello di ragionamento Codex non valido.")
+            raise BridgeError(t('config.invalid_codex_reasoning_level'))
         if not isinstance(self.ollama_options, dict):
-            raise BridgeError("ollama_options deve essere una tabella.")
+            raise BridgeError(t('config.ollama_options_must_be_a_table'))
         if {"num_ctx", "num_predict", "temperature"} & self.ollama_options.keys():
-            raise BridgeError("Impostare num_ctx, num_predict e temperature nei campi dedicati.")
+            raise BridgeError(t('config.set_num_ctx_num_predict_and_temperature_in_their_dedicated_fields'))
         for mapping in (self.roles, self.positions):
             if not isinstance(mapping, dict) or set(mapping) != {"codex", "ollama"} or not all(isinstance(v, str) for v in mapping.values()):
-                raise BridgeError("Ruoli e posizioni devono contenere codex e ollama come testi.")
+                raise BridgeError(t('config.roles_and_positions_must_contain_codex_and_ollama_as_text'))
         u = urlsplit(self.ollama_url)
         try:
             local = u.hostname == "localhost" or ipaddress.ip_address(u.hostname or "").is_loopback
@@ -102,9 +103,9 @@ class Config:
         try:
             port = u.port
         except ValueError as e:
-            raise BridgeError("Porta Ollama non valida.") from e
+            raise BridgeError(t('config.invalid_ollama_port')) from e
         if not allowed or u.username or u.password or u.path not in ("", "/") or u.query or u.fragment or port == 0:
-            raise BridgeError("Ollama richiede loopback HTTP o un host esplicitamente autorizzato sul server con ALTERECHO_OLLAMA_HOSTS; niente credenziali o percorsi.")
+            raise BridgeError(t('config.ollama_requires_http_loopback_or_a_host_explicitly_authorized_on_the_server_with_alterecho_olla'))
 
     @classmethod
     def load(cls, path):

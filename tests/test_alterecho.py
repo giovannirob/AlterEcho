@@ -54,11 +54,11 @@ def tearDownModule():
 
 class LogicTests(unittest.TestCase):
     def test_official_cli_help(self):
-        result = subprocess.run([sys.executable, "-m", "alterecho", "--help"],
+        result = subprocess.run([sys.executable, "-m", "alterecho", "--lang", "en", "--help"],
                                 cwd=Path(__file__).resolve().parents[1],
                                 capture_output=True, text=True, encoding="utf-8", timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Uso: alterecho", result.stdout)
+        self.assertIn("Usage: alterecho", result.stdout)
         self.assertIn("AlterEcho", result.stdout)
 
     def test_desktop_codex_without_path(self):
@@ -440,14 +440,16 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_codex_tools_quota_timeout_stop(self):
         cmd = [sys.executable, str(Path(__file__).with_name("fake_server.py").resolve())]
-        for incoming, expected in [("REQUEST_TOOL", "rifiutata"), ("FAIL_QUOTA", "failed"), ("STALL", "Timeout")]:
-            cfg = Config(codex_model="test-codex", first="ollama", timeout=0.5)
+        for incoming, expected in [("REQUEST_TOOL", "rejected"), ("FAIL_QUOTA", "failed"), ("STALL", "timed out")]:
+            cfg = Config(codex_model="test-codex", first="ollama")
             c = Conversation(cfg.to_dict(), messages=[Message("ollama", "b", incoming, 0)])
             a = CodexAdapter(cfg)
             with patch("alterecho.adapters.codex.command", return_value=cmd):
                 try:
                     await a.start()
                     await a.attach(c, lambda: None)
+                    # The short deadline tests generation, not cold fixture startup.
+                    cfg.timeout = 0.5
                     with self.assertRaisesRegex(BridgeError, expected):
                         await a.generate(c, lambda: None)
                     self.assertEqual(len(c.messages), 1)

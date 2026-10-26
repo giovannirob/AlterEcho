@@ -1,4 +1,7 @@
+from .i18n import number as format_number
+from .i18n import status as status_label, localize
 """A single in-progress Rich render, indexed completed messages and SSE replay."""
+from .i18n import t
 import asyncio
 
 from rich.live import Live
@@ -27,9 +30,9 @@ class WatchRenderer:
         if not getattr(getattr(self.ui, "console", None), "is_terminal", False):
             return  # Pipes receive complete messages exactly once, no ANSI redraw.
         p = self.partial
-        panel = Panel(Text(safe_text(p.get("text") or "In attesa del modello…")),
+        panel = Panel(Text(safe_text(p.get("text") or t('watching.waiting_for_the_model'))),
                       title=Text(safe_text(f"{p['index']}/{self.state['config']['max_turns']} · {p['speaker']} · {p['model']}")),
-                      subtitle="Generazione in corso", border_style="cyan" if p["speaker"] == "A" else "magenta")
+                      subtitle=t('watching.generating_response'), border_style="cyan" if p["speaker"] == "A" else "magenta")
         if not self.live:
             self.live = Live(panel, console=self.ui.console, transient=True, refresh_per_second=12,
                              vertical_overflow="ellipsis")
@@ -85,7 +88,7 @@ class WatchRenderer:
 async def watch(client, cid, ui):
     renderer = WatchRenderer(ui)
     cursor = None
-    ui.say(f"Conversazione: {cid} · Ctrl+C scollega il client; 'alterecho stop {cid}' arresta la generazione.")
+    ui.say(t('watching.conversation_ctrl_c_disconnects_the_client_alterecho_stop_stops_generation' ,p0=cid, p1=cid))
     try:
         # Missing IDs fail immediately. SSE then supplies an atomic snapshot and
         # cursor, so events racing this initial GET cannot be lost or doubled.
@@ -106,15 +109,15 @@ async def watch(client, cid, ui):
                     if attempt == 9:
                         raise
                     renderer.close()
-                    ui.say("Stream disconnesso; riconnessione al server…")
+                    ui.say(t('watching.stream_disconnected_reconnecting_to_the_server'))
                 await asyncio.sleep(min(attempt + 1, 5))
             else:
-                raise BridgeError("Stream non recuperato. La conversazione continua sul server; riprova watch.")
+                raise BridgeError(t('watching.stream_recovery_failed_the_conversation_continues_on_the_server_retry_watch'))
         renderer.close()
         if renderer.partial:
-            ui.say("Risposta parziale · non completata:")
+            ui.say(t('watching.partial_response_incomplete'))
             ui.say(renderer.partial["text"])
-        ui.say(f"Stato: {state['status']} · {len(state['messages'])} messaggi · {state['stats']['seconds']:.2f}s")
+        ui.say(t('watching.status_messages_s' ,p0=status_label(state['status']), p1=t('common.messages', count=len(state['messages'])), p2=format_number(state['stats']['seconds'], 2)))
         if state.get("error"):
             ui.error(state["error"])
         return 0 if state["status"] in {"completed", "paused"} else 1

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alterecho"
-version = "1.1.0"
-description = "Piattaforma headless con API, client CLI e Web UI per dialoghi tra modelli"
+version = "1.2.0"
+description = "Headless platform with API, CLI and Web clients for conversations between AI models"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27,<1", "rich>=13.7,<15", "markdown-it-py>=3,<5", "Pygments>=2.17,<3"]
 
@@ -22,4 +22,4 @@ include = ["alterecho*"]
 
 [tool.setuptools.package-data]
 "alterecho.exporters" = ["templates/*.html", "templates/*.css", "templates/*.js"]
-"alterecho" = ["static/index.html", "static/assets/*"]
+"alterecho" = ["static/index.html", "static/assets/*", "locales/*.json"]

@@ -1,4 +1,5 @@
 """FastAPI application. One process/worker owns every conversation task."""
+from .i18n import message as t, error_payload
 import asyncio
 from contextlib import asynccontextmanager
 from collections import defaultdict, deque
@@ -57,14 +58,14 @@ def create_app(settings=None, manager=None):
     async def security(request, call_next):
         origin = request.headers.get("origin")
         if origin and origin.rstrip("/") not in settings.origins:
-            return JSONResponse({"detail": "Origine non autorizzata."}, status_code=403)
+            return JSONResponse(error_payload(t('server.origin_not_authorized')), status_code=403)
         if request.headers.get("sec-fetch-site") == "cross-site":
-            return JSONResponse({"detail": "Richiesta browser da un sito terzo rifiutata."}, status_code=403)
+            return JSONResponse(error_payload(t('server.cross_site_browser_request_rejected')), status_code=403)
         path = request.url.path
         if path.startswith("/api/") and path != "/api/v1/health":
             supplied = request.headers.get("authorization", "")
             if not secrets.compare_digest(supplied, "Bearer " + settings.token):
-                return JSONResponse({"detail": "Token del servizio richiesto."}, status_code=401,
+                return JSONResponse(error_payload(t('server.service_token_required')), status_code=401,
                                     headers={"WWW-Authenticate": "Bearer"})
             address = request.client.host if request.client else "unknown"
             bucket = (address, "write" if request.method not in {"GET", "HEAD"} else "read")
@@ -73,7 +74,7 @@ def create_app(settings=None, manager=None):
             while q and q[0] < current - 60:
                 q.popleft()
             if len(q) >= (30 if bucket[1] == "write" else 240):
-                return JSONResponse({"detail": "Troppe richieste. Riprova tra un minuto."}, status_code=429, headers={"Retry-After": "60"})
+                return JSONResponse(error_payload(t('server.too_many_requests_retry_in_one_minute')), status_code=429, headers={"Retry-After": "60"})
             q.append(current)
             # Bound memory used by per-client rate buckets.
             if len(limits) > 4096:
@@ -82,12 +83,12 @@ def create_app(settings=None, manager=None):
                         del limits[key]
         if request.method in {"POST", "PUT", "PATCH"}:
             if request.headers.get("content-type", "").split(";")[0] != "application/json":
-                return JSONResponse({"detail": "Usa application/json."}, status_code=415)
+                return JSONResponse(error_payload(t('server.use_application_json')), status_code=415)
             body = bytearray()
             async for chunk in request.stream():
                 body.extend(chunk)
                 if len(body) > 262144:
-                    return JSONResponse({"detail": "Richiesta troppo grande."}, status_code=413)
+                    return JSONResponse(error_payload(t('server.request_too_large')), status_code=413)
             request._body = bytes(body)
         response = await call_next(request)
         response.headers.update({"X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
@@ -97,17 +98,21 @@ def create_app(settings=None, manager=None):
 
     @app.exception_handler(BridgeError)
     async def operational_error(request, error):
-        return JSONResponse({"detail": safe_error(error, manager.config.adapter_pair.values())}, status_code=409 if isinstance(error, Conflict) else 400)
+        return JSONResponse(error_payload(error, manager.config.adapter_pair.values()), status_code=409 if isinstance(error, Conflict) else 400)
+
+    @app.exception_handler(HTTPException)
+    async def http_error(request, error):
+        return JSONResponse(error_payload(error.detail, manager.config.adapter_pair.values()), status_code=error.status_code, headers=error.headers)
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, error):
         # Pydantic's default errors include the rejected input. A mistaken
         # credential submission must never be reflected into clients or logs.
-        return JSONResponse({"detail": [{k: e[k] for k in ("loc", "msg", "type")} for e in error.errors()]}, status_code=422)
+        return JSONResponse({"detail": [{k: e[k] for k in ("loc", "msg", "type")} for e in error.errors()], "code": "errors.validation", "params": {}}, status_code=422)
 
     @app.exception_handler(KeyError)
     async def missing(request, error):
-        return JSONResponse({"detail": "Conversazione non trovata."}, status_code=404)
+        return JSONResponse(error_payload(t('server.conversation_not_found')), status_code=404)
 
     @app.get("/api/v1/health")
     async def health():
@@ -146,7 +151,7 @@ def create_app(settings=None, manager=None):
         manager.catalog.validate(profiles)
         selected = {p["id"] for p in manager.config.adapter_pair.values()}
         if selected - {p["id"] for p in profiles}:
-            raise Conflict("Scegli altri interlocutori nelle impostazioni prima di rimuovere un profilo selezionato.")
+            raise Conflict(t('server.choose_other_participants_in_settings_before_removing_a_selected_profile'))
         if manager.catalog.path.exists():
             from .storage import atomic_write
             atomic_write(manager.catalog.path.with_name("adapters.json.bak"), manager.catalog.path.read_text(encoding="utf-8"))
@@ -208,7 +213,7 @@ def create_app(settings=None, manager=None):
     async def pause(cid: str):
         manager.get(cid)
         if cid not in manager.tasks:
-            raise Conflict("La conversazione non è attiva.")
+            raise Conflict(t('server.the_conversation_is_not_active'))
         manager.pauses.add(cid)
         return {"id": cid, "pause_requested": True}
 
@@ -221,7 +226,7 @@ def create_app(settings=None, manager=None):
         async with manager.lock:
             manager.get(cid)
             if cid in manager.tasks:
-                raise Conflict("Arresta la conversazione prima di eliminarla.")
+                raise Conflict(t('server.stop_the_conversation_before_deleting_it'))
             manager.stores[cid].delete(cid)
             manager.loaded.pop(cid, None)
             manager.stores.pop(cid, None)
@@ -232,7 +237,7 @@ def create_app(settings=None, manager=None):
     async def export(cid: str, format: str):
         c = manager.get(cid)
         if format not in {"json", "md", "txt", "html"}:
-            raise HTTPException(400, "Formato non supportato.")
+            raise HTTPException(400, t('server.unsupported_format'))
         store = manager.stores[cid]
         if format == "json":
             return JSONResponse(c.to_dict(), headers={"Content-Disposition": f'attachment; filename="conversation.json"'})
@@ -244,7 +249,7 @@ def create_app(settings=None, manager=None):
         manager.get(cid)
         address = request.client.host if request.client else "unknown"
         if streams[address] >= 8:
-            raise HTTPException(429, "Troppi stream simultanei.")
+            raise HTTPException(429, t('server.too_many_simultaneous_streams'))
         streams[address] += 1
         cursor = request.headers.get("last-event-id")
 
@@ -284,7 +289,7 @@ def create_app(settings=None, manager=None):
     @app.get("/", include_in_schema=False)
     async def web():
         if not (static / "index.html").is_file():
-            return JSONResponse({"detail": "Frontend non compilato: esegui npm ci e npm run build in web/."}, status_code=503)
+            return JSONResponse(error_payload(t('server.frontend_not_built_run_npm_ci_and_npm_run_build_in_web')), status_code=503)
         return FileResponse(static / "index.html")
     app.add_middleware(CORSMiddleware, allow_origins=settings.origins,
                        allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -299,7 +304,7 @@ def serve(host=None, port=None):
     settings = ServerSettings.from_env(host, port)
     app = create_app(settings)
     print(f"AlterEcho headless: http://{settings.host}:{settings.port}")
-    print(f"Token locale: {settings.directory / 'server-token'} (oppure ALTERECHO_TOKEN)")
+    print(t('server.local_token_or_alterecho_token' ,p0=settings.directory / 'server-token'))
     # No reload/multiple workers: every task belongs to this process.
     trusted_proxies = os.environ.get("ALTERECHO_PROXY_IPS", "")
     def request_shutdown():

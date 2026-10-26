@@ -8,25 +8,25 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $source = Join-Path $projectRoot '.venv\Scripts\alterecho.exe'
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-    throw 'Prima crea .venv e installa il progetto: .\.venv\Scripts\python.exe -m pip install -e .'
+    throw 'First create .venv and install the project: .\.venv\Scripts\python.exe -m pip install -e .'
 }
 $targetDir = [IO.Path]::GetFullPath($InstallDir)
 $target = Join-Path $targetDir 'alterecho.exe'
 Write-Host "Launcher: $target"
 if (-not $NoPath) {
-    Write-Host 'Questa installazione aggiunge la cartella al PATH del solo utente corrente. Non richiede amministratore.'
+    Write-Host 'This adds the directory to the current user PATH only. Administrator privileges are not required.'
 }
 if (-not $Yes) {
-    $answer = Read-Host 'Installare? [s/N]'
-    if ($answer -notmatch '^(s|si|sì)$') {
-        Write-Host 'Installazione annullata. Nessuna modifica.'
+    $answer = Read-Host 'Install? [y/N]'
+    if ($answer -notmatch '^(y|yes|s|si|sì)$') {
+        Write-Host 'Installation cancelled. No changes.'
         exit 0
     }
 }
 New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
 Copy-Item -LiteralPath $source -Destination $target -Force
 & $target help | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Verifica del launcher non riuscita.' }
+if ($LASTEXITCODE -ne 0) { throw 'Launcher verification failed.' }
 if (-not $NoPath) {
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     $entries = @($userPath -split ';' | Where-Object { $_.Trim() })
@@ -52,8 +52,8 @@ public static class AlterEchoEnvironment {
         [void][AlterEchoEnvironment]::SendMessageTimeout([IntPtr]0xffff, 0x1a,
             [UIntPtr]::Zero, 'Environment', 2, 2000, [ref]$result)
     } catch {
-        Write-Host 'PATH salvato. Se un nuovo terminale non lo riceve, riavvia il terminale o VS Code.'
+        Write-Host 'PATH saved. Restart the terminal or VS Code if a new terminal does not inherit it.'
     }
 }
-Write-Host 'Installazione riuscita. Avvia: alterecho. Guida: alterecho help.'
-Write-Host "Il launcher usa il virtualenv di $projectRoot. Dopo uno spostamento della cartella, ricrea il virtualenv e ripeti l'installazione."
+Write-Host 'Installation succeeded. Run: alterecho. Help: alterecho help.'
+Write-Host "The launcher uses the virtualenv in $projectRoot. After moving the checkout, recreate the virtualenv and reinstall."

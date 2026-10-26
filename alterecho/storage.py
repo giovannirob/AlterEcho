@@ -1,3 +1,4 @@
+from .i18n import message as t
 import json
 import os
 from pathlib import Path
@@ -59,7 +60,7 @@ class Store:
         formats = set(formats or ("md", "txt", "html"))
         invalid = formats - {"md", "txt", "html"}
         if invalid:
-            raise BridgeError("Formato di esportazione non supportato: " + ", ".join(sorted(invalid)))
+            raise BridgeError(t('errors.export_format', formats=', '.join(sorted(invalid))))
         md = ["# AlterEcho", "", f"Argomento: {conversation.config['topic']}", f"Modalità: {conversation.config['mode']}", f"Stato: {conversation.status}", ""]
         txt = ["AlterEcho", f"Argomento: {conversation.config['topic']}", f"Stato: {conversation.status}", ""]
         for i, m in enumerate(conversation.messages, 1):
@@ -93,7 +94,7 @@ class Store:
     def delete(self, conversation_id=None):
         """Delete one selected conversation and its generated exports."""
         if self.path.suffix.lower() != ".json":
-            raise BridgeError("Si può eliminare soltanto uno storico JSON.")
+            raise BridgeError(t('errors.storage.only_a_json_history_can_be_deleted'))
         removed = []
         for path in (self.path, self.path.with_suffix(".md"), self.path.with_suffix(".txt"), self.path.with_suffix(".html")):
             try:
@@ -102,7 +103,7 @@ class Store:
                 if existed:
                     removed.append(path)
             except OSError as e:
-                raise BridgeError(f"Impossibile eliminare {path}: {e}") from e
+                raise BridgeError(t('errors.storage.cannot_delete' ,p0=path, p1=e)) from e
         # Resume backups belong to this same history. Do not retain a hidden
         # copy after an explicit deletion, or touch backups of other histories.
         backups = self.path.parent / ".backups"

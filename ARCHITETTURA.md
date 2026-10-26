@@ -1,5 +1,7 @@
 # Architettura AlterEcho 1.1
 
+[English](ARCHITECTURE.md) | **Italiano**
+
 ## Un solo processo applicativo
 
 ![Terminale e browser si collegano allo stesso server headless, che gestisce i quattro provider AI.](docs/images/architettura.svg)
@@ -95,3 +97,9 @@ Svelte 5, Vite e TypeScript compilano in `alterecho/static`. Dashboard, creazion
 Wheel e sdist includono gli statici. L'extra `server` installa FastAPI/Uvicorn/Pydantic; il client può essere installato senza quelle dipendenze. PyInstaller usa la medesima entrypoint. Il Dockerfile compila la UI in uno stage Node, costruisce wheel in uno stage Python e usa un runtime non root. Lo stato Codex è in un volume distinto. Servizi systemd/launchd/WinSW avviano lo stesso comando con home persistente esplicita.
 
 Le verifiche e i limiti realmente osservati sono riportati in [docs/VERIFICA.md](docs/VERIFICA-1.1.md); non implicano l'esecuzione di CI o inferenze reali. Le fonti ufficiali consultate includono [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [Svelte TypeScript](https://svelte.dev/docs/svelte/typescript) e [Codex authentication](https://learn.chatgpt.com/docs/auth).
+
+## Internazionalizzazione
+
+`alterecho/locales/en.json` e `it.json` sono cataloghi comuni a Python e Svelte. L’inglese è il riferimento/fallback. Python usa risorse del pacchetto e lingua locale al contesto; Vite incorpora i JSON scoperti automaticamente. La CLI salva `client-language.json`; il browser usa local storage e store reattivi. Non esiste una lingua condivisa del server.
+
+Gli errori conservano `detail` e aggiungono codici/parametri traducibili, redatti prima dell’esposizione. La validazione mantiene i dettagli precedenti; snapshot/eventi possono aggiungere `error_info`. Diagnostica esterna sconosciuta e contenuti della conversazione non vengono tradotti. Il cambio lingua non ricrea componenti di conversazione né interrompe SSE. Wheel, sdist, standalone e Docker includono i cataloghi. [Dettagli](docs/I18N.it.md).

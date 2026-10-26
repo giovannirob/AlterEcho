@@ -93,7 +93,7 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         await adapter.close()
         self.assertEqual(state["ps"], 2)
         self.assertTrue(adapter.client.is_closed)
-        self.assertIn("non eseguito", adapter.memory_notice)
+        self.assertIn("skipped", adapter.memory_notice)
         self.assertTrue(state["resident"])
 
     async def test_native_keep_alive_values_are_sent_unchanged(self):
@@ -115,7 +115,7 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         await a.generate(Conversation(cfg.to_dict()), lambda: None)
         await a.close()
         self.assertEqual(state["ps"], 1)
-        self.assertIn("già residente", a.memory_notice)
+        self.assertIn("already resident", a.memory_notice)
         self.assertTrue(state["resident"])
 
     async def test_unload_disabled_and_diagnostics_do_not_run_cleanup(self):
@@ -139,7 +139,7 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         await a.close()
         self.assertEqual(reply.text, "risposta")
         self.assertTrue(a.client.is_closed)
-        self.assertIn("non riuscito", a.memory_notice)
+        self.assertIn("failed", a.memory_notice)
 
     async def test_ctrl_c_preserves_partial_and_closes_without_unload(self):
         cfg = Config(first="ollama")

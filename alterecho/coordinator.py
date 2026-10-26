@@ -1,3 +1,4 @@
+from .i18n import message as t
 import asyncio
 import time
 from dataclasses import asdict
@@ -62,7 +63,7 @@ class Coordinator:
             c.status, c.error = "stopped", safe_error(e, self.config.adapter_pair.values())
 
         except Exception as e:
-            c.status, c.error = "failed", "Errore interno durante la generazione; checkpoint conservato."
+            c.status, c.error = "failed", t('errors.internal_generation')
             raise
         finally:
             self.checkpoint()

@@ -1,4 +1,5 @@
 """User paths independent of the terminal's current directory."""
+from .i18n import message as t
 import os
 import shlex
 from pathlib import Path
@@ -11,7 +12,7 @@ def portable_home():
         return None
     path = Path(value).expanduser()
     if not path.is_absolute():
-        raise ValueError("ALTERECHO_HOME deve essere un percorso assoluto.")
+        raise ValueError(t('paths.alterecho_home_must_be_an_absolute_path'))
     return path
 
 
@@ -38,7 +39,7 @@ def _windows_documents():
     buffer = ctypes.create_unicode_buffer(32768)
     result = ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buffer)
     if result != 0 or not buffer.value:
-        raise OSError("Cartella Documenti Windows non disponibile.")
+        raise OSError(t('paths.windows_documents_directory_unavailable'))
     return Path(buffer.value)
 
 

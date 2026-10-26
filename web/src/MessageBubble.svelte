@@ -1,4 +1,5 @@
 <script lang="ts">
+  import {t,formatNumber,formatDate} from './i18n';
   import type {Message,Selection,Side} from './api';
   import {markdown} from './markdown';
   export let message:Message|{speaker:Side;model:string;text:string};
@@ -14,10 +15,10 @@
 <article class="chat-message" class:side-b={message.speaker==='B'} data-turn={index}>
   <div class="avatar" aria-hidden="true">{message.speaker}</div>
   <div class="bubble">
-    <div class="bubble-heading"><div><strong>{participant.name||'Interlocutore '+message.speaker}</strong><small>{message.model} <span>· {index}</span></small></div><button type="button" class="text-button" on:click={()=>copy(message.text)} aria-label={'Copia messaggio '+index}>Copia</button></div>
+    <div class="bubble-heading"><div><strong>{participant.name||$t('web.participant_name',{side:message.speaker})}</strong><small>{message.model} <span>· {index}</span></small></div><button type="button" class="text-button" on:click={()=>copy(message.text)} aria-label={$t('web.copy_message_number',{index})}>{$t('web.copy')}</button></div>
     <div class="markdown">{@html html}</div>
-    {#if pending}<div class="generating" role="status"><span class:working={active}></span>{active?'Generazione in corso…':'Risposta parziale · non completata'}</div>{/if}
-    {#if full}<details class="message-details"><summary>{full.seconds.toFixed(1)} s{#if full.usage.output_tokens!==undefined} · {full.usage.output_tokens} token output{/if}<span>Dettagli</span></summary><dl><dt>Data</dt><dd>{new Date(full.timestamp).toLocaleString('it-IT')}</dd>{#each Object.entries({input_tokens:'Token input',output_tokens:'Token output',tokens_per_second:'Token/s',load_seconds:'Caricamento (s)',generation_seconds:'Generazione (s)'}) as [key,label]}{#if full.usage[key]!==undefined}<dt>{label}</dt><dd>{full.usage[key]}</dd>{/if}{/each}</dl></details>{/if}
+    {#if pending}<div class="generating" role="status"><span class:working={active}></span>{active?$t('web.generating_response'):$t('web.partial_response_incomplete')}</div>{/if}
+    {#if full}<details class="message-details"><summary>{$formatNumber(full.seconds,{maximumFractionDigits:1})} s{#if full.usage.output_tokens!==undefined} · {$t('web.output_token_count',{},full.usage.output_tokens)}{/if}<span>{$t('web.details')}</span></summary><dl><dt>{$t('web.date')}</dt><dd>{$formatDate(full.timestamp)}</dd>{#each Object.entries({input_tokens:$t('web.input_tokens'),output_tokens:$t('web.output_tokens'),tokens_per_second:$t('web.tokens_s'),load_seconds:$t('web.loading_s'),generation_seconds:$t('web.generation_s')}) as [key,label]}{#if full.usage[key]!==undefined}<dt>{label}</dt><dd>{$formatNumber(full.usage[key])}</dd>{/if}{/each}</dl></details>{/if}
   </div>
 </article>
 <style>

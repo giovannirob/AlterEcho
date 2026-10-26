@@ -40,6 +40,8 @@ def exercise(python, directory, version):
             return json.load(response)
     started=False
     try:
+        for language, heading in [('en', b'Usage:'), ('it', b'Uso:')]:
+            assert heading in run('--lang', language, 'help').stdout
         run('serve');started=True
         assert api('/version')['version']==version
         assert {p['id'] for p in api('/providers')}=={'codex','ollama','openai','openrouter'}
@@ -75,6 +77,8 @@ def main():
         for name in ('server.py','client.py','managed.py','coordinator.py','cli.py'):
             assert 'alterecho/'+name in names,name
         assert 'alterecho/static/index.html' in names
+        for language in ('en', 'it'):
+            assert f'alterecho/locales/{language}.json' in names
         assert any(n.startswith('alterecho/static/assets/') and n.endswith('.js') for n in names)
         assert 'alterecho/exporters/templates/conversation.html' in names
     with tarfile.open(sdist) as archive:

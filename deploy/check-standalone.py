@@ -15,6 +15,9 @@ exe=Path(sys.argv[1] if len(sys.argv)>1 else 'dist/alterecho.exe').resolve()
 expected_version=tomllib.loads((Path(__file__).resolve().parents[1]/'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
 with tempfile.TemporaryDirectory() as tmp:
     env=dict(os.environ,ALTERECHO_HOME=str(Path(tmp)/'home'),ALTERECHO_TOKEN='standalone-test-service-token-2026-abcdefgh')
+    for language, heading in [('en', b'Usage:'), ('it', b'Uso:')]:
+        result=subprocess.run([str(exe),'--lang',language,'help'],cwd=tmp,env=env,capture_output=True,timeout=30)
+        assert result.returncode==0 and heading in result.stdout, result.stderr
     with socket.socket() as s:s.bind(('127.0.0.1',0));port=s.getsockname()[1]
     base=f'http://127.0.0.1:{port}'
     log=Path(tmp)/'server.log'

@@ -124,7 +124,7 @@ class APIAdapterTests(unittest.IsolatedAsyncioTestCase):
 
             ui = Terminal()
             ui.console = Console(file=io.StringIO(), width=120)
-            with patch('alterecho.profile_runtime.CodexAdapter', Native), patch('alterecho.profile_runtime.OllamaAdapter', Local), patch('alterecho.profile_runtime.ChatAPIAdapter') as api, patch.object(Prompt, 'get_input', side_effect=['1', '1', 'Nuovo tema', '2', 's']):
+            with patch('alterecho.profile_runtime.CodexAdapter', Native), patch('alterecho.profile_runtime.OllamaAdapter', Local), patch('alterecho.profile_runtime.ChatAPIAdapter') as api, patch.object(Prompt, 'get_input', side_effect=['1', '1', 'Nuovo tema', '2', 'y']):
                 self.assertEqual(await execute(parser().parse_args(['run']), ui, settings), 0)
                 api.assert_not_called()
             store = Store(next(Path(cfg.output_dir).rglob('*.json')))
@@ -209,7 +209,7 @@ class APIAdapterTests(unittest.IsolatedAsyncioTestCase):
         event = {"choices": [{"delta": {"tool_calls": [{"function": {"name": "execute"}}]}}]}
         a = ChatAPIAdapter(cfg, cfg.adapter_pair["codex"], "codex", httpx.MockTransport(lambda r: httpx.Response(200, text="data: " + json.dumps(event))))
         with patch.dict(os.environ, {"TEST_API_A": "fixture-key"}):
-            with self.assertRaisesRegex(BridgeError, "strumenti"):
+            with self.assertRaisesRegex(BridgeError, "tool"):
                 await a.generate(Conversation(cfg.to_dict()), lambda: None)
         await a.close()
 

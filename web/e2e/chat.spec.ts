@@ -1,4 +1,5 @@
 import {test,expect, type Page} from '@playwright/test';
+test.use({locale:'it-IT'});
 const token='browser-fixture-only-token-'+'x'.repeat(32);
 test('chat overview remains readable with three distinct messages and themes',async({page},info)=>{
   await login(page,'chat-preview');await expect(page.locator('.chat-message')).toHaveCount(3);

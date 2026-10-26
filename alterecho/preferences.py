@@ -1,3 +1,4 @@
+from .i18n import message as t
 import json
 from pathlib import Path
 
@@ -16,7 +17,7 @@ class UserSettings:
             try:
                 saved = json.loads(self.path.read_text(encoding="utf-8"))
                 if not isinstance(saved, dict) or saved.get("schema_version") != 1:
-                    raise ValueError("versione non supportata")
+                    raise ValueError(t('preferences.unsupported_version'))
                 cfg = Config(**saved["config"])
                 cfg.resolve_paths(self.path.parent)
                 # Upgrade the former default without overriding custom folders.
@@ -25,7 +26,7 @@ class UserSettings:
                 cfg.validate()
                 return cfg
             except (BridgeError, OSError, ValueError, TypeError, KeyError) as e:
-                raise BridgeError(f"Impostazioni non valide in {self.path}: {e}. Il file non è stato modificato.") from e
+                raise BridgeError(t('preferences.invalid_settings_in_the_file_was_not_modified' ,p0=self.path, p1=e)) from e
         root = project_root()
         legacy = root / "config.toml" if root else None
         if legacy and legacy.is_file():
@@ -49,13 +50,13 @@ class UserSettings:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
             roots = saved.get("history_directories", [])
             if not isinstance(roots, list) or not all(isinstance(p, str) and Path(p).is_absolute() for p in roots):
-                raise ValueError("cartelle degli storici non valide")
+                raise ValueError(t('preferences.invalid_history_directories'))
             previous = saved.get("config", {}).get("output_dir")
             if isinstance(previous, str) and Path(previous).is_absolute():
                 roots = roots + [previous]
             return list(dict.fromkeys(roots))
         except (OSError, ValueError, TypeError, AttributeError) as e:
-            raise BridgeError(f"Impostazioni non valide in {self.path}: {e}. Il file non è stato modificato.") from e
+            raise BridgeError(t('preferences.invalid_settings_in_the_file_was_not_modified' ,p0=self.path, p1=e)) from e
 
 
 def history_directories(cfg, preferences=None):

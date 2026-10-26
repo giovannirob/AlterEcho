@@ -4,6 +4,7 @@ WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
+COPY alterecho/locales /alterecho/locales
 RUN npm run check && npm run build
 
 FROM node:22-bookworm-slim AS codex

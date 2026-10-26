@@ -22,6 +22,7 @@ from alterecho.paths import config_dir, data_dir
 from alterecho.preferences import UserSettings, history_directories, resumed_config
 from alterecho.storage import Store, scan_conversations
 from alterecho.ui import Terminal
+from alterecho.i18n import set_language, language
 from alterecho.adapters.base import Reply
 
 
@@ -32,10 +33,13 @@ CATALOG = [{"model": "actual-codex", "defaultReasoningEffort": "medium",
 
 class IsolatedSettings:
     def setUp(self):
+        previous_language = language()
+        set_language("it")
+        self.addCleanup(set_language, previous_language)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
-        self.env = patch.dict(os.environ, {"ALTERECHO_HOME": str(self.root / "personal")})
+        self.env = patch.dict(os.environ, {"ALTERECHO_HOME": str(self.root / "personal"), "ALTERECHO_LANG": "it"})
         self.env.start()
         self.addCleanup(self.env.stop)
 
@@ -153,7 +157,7 @@ class PreferencesTests(IsolatedSettings, unittest.TestCase):
         settings.path.parent.mkdir(parents=True)
         settings.path.write_text('{"schema_version":9}', encoding="utf-8")
         original = settings.path.read_bytes()
-        with self.assertRaisesRegex(BridgeError, "non è stato modificato"):
+        with self.assertRaisesRegex(BridgeError, "was not modified"):
             settings.load()
         self.assertEqual(settings.path.read_bytes(), original)
 
@@ -184,7 +188,7 @@ class PreferencesTests(IsolatedSettings, unittest.TestCase):
 
     def test_relative_portable_home_rejected(self):
         with patch.dict(os.environ, {"ALTERECHO_HOME": "relative"}):
-            with self.assertRaisesRegex(ValueError, "assoluto"):
+            with self.assertRaisesRegex(ValueError, "absolute"):
                 Config()
 
     def test_legacy_resume_keeps_old_codex_cwd_and_actual_history_location(self):
@@ -289,7 +293,7 @@ class MenuTests(IsolatedSettings, unittest.TestCase):
         ui = self.ui()
         with patch.object(Prompt, "get_input", return_value="0"):
             self.assertIsNone(ui.choose_history(entries))
-        for text in (cfg.topic, cfg.codex_model, cfg.ollama_model, "1 messaggi", "Completata"):
+        for text in (cfg.topic, cfg.codex_model, cfg.ollama_model, "1 messaggio", "Completata"):
             self.assertIn(text, ui.console.file.getvalue())
 
 

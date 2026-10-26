@@ -1,4 +1,5 @@
 """User-managed adapter profiles. Store configuration, never API key values."""
+from .i18n import message as t
 import json
 from pathlib import Path
 import re
@@ -24,17 +25,17 @@ def new_profile(provider, name):
 def validate_profile(profile):
     fields = {"id", "name", "provider", "model", "binary", "url", "api_key_env"}
     if not isinstance(profile, dict) or set(profile) != fields or not all(isinstance(v, str) for v in profile.values()):
-        raise BridgeError("Profilo adapter non valido; sono ammessi solo i campi previsti, senza credenziali.")
+        raise BridgeError(t('integrations.invalid_adapter_profile_only_expected_fields_without_credentials_are_allowed'))
     if not profile["id"] or not profile["name"].strip() or profile["provider"] not in PROVIDERS:
-        raise BridgeError("Nome, ID o tipo di adapter non valido.")
+        raise BridgeError(t('integrations.invalid_adapter_name_id_or_type'))
     provider = profile["provider"]
     if provider in API_URLS:
         if profile["url"] != API_URLS[provider] or not re.fullmatch(r"[A-Z_][A-Z0-9_]*", profile["api_key_env"]):
-            raise BridgeError("Usa l'endpoint ufficiale e il nome della variabile d'ambiente della chiave API.")
+            raise BridgeError(t('integrations.use_the_official_endpoint_and_the_name_of_the_api_key_environment_variable'))
     elif provider == "ollama":
         Config(ollama_url=profile["url"]).validate()
     elif not profile["binary"] or (("/" in profile["binary"] or "\\" in profile["binary"]) and not Path(profile["binary"]).expanduser().is_absolute()):
-        raise BridgeError("L'eseguibile Codex deve essere nel PATH oppure indicato con un percorso assoluto.")
+        raise BridgeError(t('integrations.codex_executable_must_be_in_path_or_specified_by_an_absolute_path'))
 
 
 class AdapterCatalog:
@@ -53,20 +54,20 @@ class AdapterCatalog:
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
             if saved.get("schema_version") != 1:
-                raise ValueError("versione non supportata")
+                raise ValueError(t('integrations.unsupported_version'))
             profiles = saved["adapters"]
             self.validate(profiles)
             return profiles
         except (OSError, ValueError, TypeError, KeyError, AttributeError) as e:
-            raise BridgeError(f"Catalogo adapter non valido: {self.path}. {e}") from e
+            raise BridgeError(t('integrations.invalid_adapter_catalog' ,p0=self.path, p1=e)) from e
 
     def validate(self, profiles):
         if not isinstance(profiles, list) or not profiles:
-            raise BridgeError("Il catalogo deve contenere almeno un adapter.")
+            raise BridgeError(t('integrations.the_catalog_must_contain_at_least_one_adapter'))
         for profile in profiles:
             validate_profile(profile)
         if len({p["id"] for p in profiles}) != len(profiles):
-            raise BridgeError("ID adapter duplicato.")
+            raise BridgeError(t('integrations.duplicate_adapter_id'))
 
     def save(self, profiles):
         self.validate(profiles)

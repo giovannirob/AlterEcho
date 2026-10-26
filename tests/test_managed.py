@@ -26,6 +26,8 @@ def free_port():
 
 class ManagedTests(unittest.TestCase):
     def setUp(self):
+        from alterecho.i18n import set_language, language
+        previous = language(); set_language("en"); self.addCleanup(set_language, previous)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
@@ -96,14 +98,14 @@ class ManagedTests(unittest.TestCase):
     def test_occupied_port_propagates_failure_without_false_ready(self):
         with socket.socket() as sock:
             sock.bind(('127.0.0.1',self.port));sock.listen()
-            with self.assertRaisesRegex(BridgeError,'Avvio fallito'):
+            with self.assertRaisesRegex(BridgeError,'Startup failed'):
                 background(timeout=10)
 
     def test_stale_pid_never_signals_foreign_process(self):
         file = metadata_path(self.settings);file.parent.mkdir(parents=True)
         file.write_text(json.dumps({'format':1,'pid':os.getpid(),'control_port':free_port(),
             'instance':'f'*32,'secret':'x'*40}),encoding='utf-8')
-        with self.assertRaisesRegex(BridgeError,'Nessun server locale'):
+        with self.assertRaisesRegex(BridgeError,'No managed local server'):
             down()
         self.assertFalse(file.exists())
         self.assertIsNotNone(os.getpid())
@@ -116,7 +118,7 @@ class ManagedTests(unittest.TestCase):
             self.assertTrue(control(meta))
 
     def test_readiness_respects_restricted_host_and_invalid_port(self):
-        with self.assertRaisesRegex(BridgeError,'Porta'):background(port=0)
+        with self.assertRaisesRegex(BridgeError,'server port'):background(port=0)
         with patch.dict(os.environ,{'ALTERECHO_ALLOWED_HOSTS':'echo.example','ALTERECHO_ORIGINS':'https://echo.example'}):
             self.assertTrue(background())
 
@@ -144,7 +146,7 @@ class ManagedTests(unittest.TestCase):
     def test_startup_timeout_has_watchdog_and_no_success(self):
         # Deliberately less than Python/server import time; the unadopted child
         # stops itself instead of becoming an orphan after the launcher exits.
-        with self.assertRaisesRegex(BridgeError,'Timeout'):
+        with self.assertRaisesRegex(BridgeError,'Startup timed out'):
             background(timeout=.001)
         deadline=time.monotonic()+10
         time.sleep(2)
@@ -175,7 +177,7 @@ main(['serve','--foreground'])
             self.assertIsNone(process.poll())
             marker.touch();self.assertEqual(process.wait(timeout=10),23)
             self.assertFalse(control(meta))
-            with self.assertRaisesRegex(BridgeError,'Nessun server locale'):down()
+            with self.assertRaisesRegex(BridgeError,'No managed local server'):down()
             self.assertFalse(metadata_path(self.settings).exists())
             self.assertTrue(background())
         finally:

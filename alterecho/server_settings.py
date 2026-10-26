@@ -1,4 +1,5 @@
 """Server configuration and singleton lease; never supplied by API callers."""
+from .i18n import message as t
 from dataclasses import dataclass, field
 import ipaddress
 import json
@@ -51,9 +52,9 @@ class ServerSettings:
 
     def prepare(self):
         if not 0 < self.port < 65536:
-            raise BridgeError("Porta del server non valida.")
+            raise BridgeError(t('server_settings.invalid_server_port'))
         if not loopback(self.host) and (not self.token or not self.origins or not self.allowed_hosts):
-            raise BridgeError("Accesso di rete: imposta ALTERECHO_TOKEN (almeno 32 caratteri), ALTERECHO_ORIGINS e ALTERECHO_ALLOWED_HOSTS.")
+            raise BridgeError(t('server_settings.network_access_set_alterecho_token_at_least_32_characters_alterecho_origins_and_alterecho_allow'))
         file = self.directory / "server-token"
         if not self.token:
             self.directory.mkdir(parents=True, exist_ok=True)
@@ -66,7 +67,7 @@ class ServerSettings:
                 with os.fdopen(fd, "w", encoding="utf-8") as stream:
                     stream.write(self.token)
         if len(self.token) < 32:
-            raise BridgeError("Il token del servizio deve contenere almeno 32 caratteri.")
+            raise BridgeError(t('server_settings.service_token_must_contain_at_least_32_characters'))
         if not self.origins:
             self.origins = [f"http://127.0.0.1:{self.port}", f"http://localhost:{self.port}", f"http://[::1]:{self.port}"]
         if not self.allowed_hosts:
@@ -74,9 +75,9 @@ class ServerSettings:
         for origin in self.origins:
             url = urlsplit(origin)
             if url.scheme not in {"http", "https"} or not url.hostname or url.username or url.password or url.path or url.query or url.fragment or "*" in origin:
-                raise BridgeError("ALTERECHO_ORIGINS richiede origini HTTP(S) esatte, senza wildcard o percorsi.")
+                raise BridgeError(t('server_settings.alterecho_origins_requires_exact_http_s_origins_without_wildcards_or_paths'))
         if any("*" in h or "/" in h for h in self.allowed_hosts):
-            raise BridgeError("ALTERECHO_ALLOWED_HOSTS richiede hostname/IP espliciti, senza wildcard o percorsi.")
+            raise BridgeError(t('server_settings.alterecho_allowed_hosts_requires_explicit_hostnames_ips_without_wildcards_or_paths'))
 
 
 class ServerLease:
@@ -106,7 +107,7 @@ class ServerLease:
             if self.stream:
                 self.stream.close()
             self.stream = None
-            raise BridgeError("Un server AlterEcho possiede già questa directory dati.") from e
+            raise BridgeError(t('server_settings.an_alterecho_server_already_owns_this_data_directory')) from e
 
     def release(self):
         if self.stream:

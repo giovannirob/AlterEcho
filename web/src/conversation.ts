@@ -13,7 +13,7 @@ export function applyEvent(c:Conversation,e:ServerEvent):Conversation {
     return {...c,messages:[...c.messages,d.message],partial:undefined};
   }
   if(e.type==='stats.updated')return {...c,stats:d};
-  if(['conversation.completed','conversation.stopped','conversation.failed','conversation.paused'].includes(e.type))return {...c,status:d.status,error:d.error,active:false};
+  if(['conversation.completed','conversation.stopped','conversation.failed','conversation.paused'].includes(e.type))return {...c,status:d.status,error:d.error,error_info:d.error_info,active:false};
   return c;
 }
 export const positions=new Map<string,{top:number;follow:boolean}>();

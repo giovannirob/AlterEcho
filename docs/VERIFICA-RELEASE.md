@@ -1,5 +1,7 @@
 # Verifica del sistema di release
 
+[English](VERIFICATION-RELEASE.md) | **Italiano**
+
 Data: **26 ottobre 2026**. Sistema preparato e verificato localmente. Le verifiche qui riportate precedono il commit e il tag locale della 1.1.0, autorizzati successivamente. **Nessun push, workflow remoto, GitHub Release o pubblicazione GHCR eseguito per questa versione.** Le operazioni di scrittura remota sono state provate soltanto con client fittizi nei test.
 
 ## File di questa revisione

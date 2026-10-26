@@ -1,19 +1,20 @@
+import {LocalizedError} from './i18n';
 export type Side = 'A' | 'B';
 export type Profile = {id:string; name:string; provider:string; model:string; url:string; api_key_env:string; billable?:boolean};
 export type Selection = {profile_id:string; model:string; name?:string; provider?:string; billable?:boolean};
 export type Configuration = {topic:string; mode:string; first:Side; max_turns:number; delay:number; timeout:number; participants:Record<Side,Selection>; roles:Record<Side,string>; positions:Record<Side,string>; codex_effort:string; ollama_keep_alive:number|string; ollama_unload_on_exit:boolean; num_ctx:number; num_predict:number; api_max_output_tokens:number; temperature:number; ollama_options:Record<string,unknown>};
 export type Message = {speaker:Side; model:string; text:string; timestamp:string; seconds:number; usage:Record<string,number>};
 export type Stats = {messages:number; seconds:number; speakers:Record<string,{input_tokens:number;output_tokens:number}>};
-export type Conversation = {id:string; created_at:string; status:string; active:boolean; config:Configuration; error?:string; message_count?:number; messages:Message[]; partial?:{speaker:Side;model:string;text:string}; stats:Stats; demo?:boolean; pause_requested?:boolean};
+export type Conversation = {id:string; created_at:string; status:string; active:boolean; config:Configuration; error?:string; error_info?:{code:string;params:Record<string,unknown>}; message_count?:number; messages:Message[]; partial?:{speaker:Side;model:string;text:string}; stats:Stats; demo?:boolean; pause_requested?:boolean};
 export type CatalogModel = string|{model:string;defaultReasoningEffort?:string;supportedReasoningEfforts?:({reasoningEffort:string;description?:string}|string)[]};
-export type Provider = {profile_id:string; name:string; provider:string; available:boolean; models:CatalogModel[]; error?:string};
+export type Provider = {profile_id:string; name:string; provider:string; available:boolean; models:CatalogModel[]; error?:string; error_info?:{code:string;params:Record<string,unknown>}};
 export type ServerEvent = {id:string; type:string; conversation_id:string; data:any};
 
 let token = '';
 export function setToken(value:string) {token=value;}
 export async function request(path:string, method='GET', body?:unknown):Promise<Response> {
   const response=await fetch('/api/v1'+path,{method,headers:{Authorization:'Bearer '+token,...(body!==undefined?{'Content-Type':'application/json'}:{})},body:body!==undefined?JSON.stringify(body):undefined,credentials:'omit',redirect:'error'});
-  if(!response.ok) {const data=await response.json().catch(()=>({detail:'Server non raggiungibile'})); throw new Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));}
+  if(!response.ok) {const data=await response.json().catch(()=>({code:'client.invalid_server_response',detail:'Invalid server response.'})); throw new LocalizedError(data.code||'',data.params||{},typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));}
   return response;
 }
 export async function api<T=any>(path:string, method='GET',body?:unknown):Promise<T> {return (await request(path,method,body)).json();}

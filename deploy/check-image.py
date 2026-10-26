@@ -26,6 +26,8 @@ def verify(architecture, version, commit, output):
     assert labels['org.opencontainers.image.revision']==commit
     assert labels['org.opencontainers.image.source'].startswith('https://github.com/')
     assert inspected['Config']['Healthcheck']['Test']
+    for language, heading in [('en', 'Usage:'), ('it', 'Uso:')]:
+        assert heading in docker('run','--rm','--entrypoint','alterecho',image,'--lang',language,'help')
     subprocess.run(['docker','run','--rm','--entrypoint','codex',image,'--version'],check=True)
     subprocess.run(['docker','run','--rm','--entrypoint','codex',image,'app-server','--help'],check=True,stdout=subprocess.DEVNULL)
     name='ae-release-'+uuid.uuid4().hex

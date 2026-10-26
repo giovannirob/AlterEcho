@@ -1,3 +1,4 @@
+from .i18n import message as t
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 import uuid
@@ -40,9 +41,9 @@ class Conversation:
     @classmethod
     def from_dict(cls, data):
         if not isinstance(data, dict) or data.get("schema_version") != 1:
-            raise BridgeError("Formato di conversazione non supportato.")
+            raise BridgeError(t('history.unsupported_conversation_format'))
         if not isinstance(data.get("messages"), list) or not isinstance(data.get("created_at"), str):
-            raise BridgeError("Storico non valido: messaggi o data mancanti/incoerenti.")
+            raise BridgeError(t('history.invalid_history_messages_or_date_missing_inconsistent'))
         data = dict(data)
         data["messages"] = [Message(**m) for m in data["messages"]]
         result = cls(**data)
@@ -51,9 +52,9 @@ class Conversation:
         for index, message in enumerate(result.messages):
             expected = cfg.first if index % 2 == 0 else other(cfg.first)
             if message.speaker != expected or not isinstance(message.text, str):
-                raise BridgeError("Storico incoerente: sequenza dei ruoli non valida.")
+                raise BridgeError(t('history.inconsistent_history_invalid_role_sequence'))
         if result.codex_synced_messages > len(result.messages):
-            raise BridgeError("Checkpoint Codex incoerente.")
+            raise BridgeError(t('history.inconsistent_codex_checkpoint'))
         return result
 
     def next_speaker(self):

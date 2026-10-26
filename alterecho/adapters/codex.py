@@ -1,3 +1,4 @@
+from ..i18n import message as t
 """Official app-server JSON lines protocol over stdio; no credentials are read."""
 import asyncio
 from collections import deque
@@ -117,9 +118,7 @@ def resolve_codex(config, env):
         if candidates:
             return str(candidates[0])
     raise BridgeError(
-        f"Codex CLI non trovato: {requested}. "
-        "Imposta codex_binary nel TOML con il percorso completo di codex.exe "
-        "oppure rendi la CLI disponibile nel PATH."
+        t('errors.codex.codex_cli_not_found_set_codex_binary_in_toml_to_the_full_codex_exe_path_or_make_the_cli_availab' ,p0=requested)
     )
 
 
@@ -134,7 +133,7 @@ def command(config, env):
         js = Path(binary).parent / "node_modules/@openai/codex/bin/codex.js"
         node = shutil.which("node")
         if not node or not js.exists():
-            raise BridgeError("Usa il binario nativo codex.exe o installa Node e la CLI npm standard.")
+            raise BridgeError(t('errors.codex.use_native_codex_exe_or_install_node_and_the_standard_npm_cli'))
         args = [node, str(js), *args[1:]]
     return args
 
@@ -174,12 +173,14 @@ class CodexAdapter:
             await self.rpc("initialize", {"clientInfo": {"name": "alterecho_local", "title": "AlterEcho", "version": __version__}})
         except BridgeError as e:
             await asyncio.sleep(0.05)
-            diagnostic = self.stderr_tail[-1] if self.stderr_tail else "Verifica che Codex possa accedere alla propria directory CODEX_HOME."
-            raise BridgeError(f"Avvio Codex fallito: {e} {diagnostic}") from e
+            if not self.stderr_tail:
+                raise BridgeError(t('errors.codex.startup_home_access', error=e)) from e
+            diagnostic = self.stderr_tail[-1]
+            raise BridgeError(t('errors.codex.codex_startup_failed' ,p0=e, p1=diagnostic)) from e
         await self.send({"method": "initialized", "params": {}})
         account = (await self.rpc("account/read", {"refreshToken": False})).get("account")
         if not account or account.get("type") != "chatgpt":
-            raise BridgeError("AlterEcho richiede l'accesso ChatGPT gestito da Codex. Esegui codex login; API key e altri provider sono rifiutati.")
+            raise BridgeError(t('errors.codex.alterecho_requires_chatgpt_authentication_managed_by_codex_run_codex_login_api_keys_and_other_p'))
         cursor = None
         while True:
             page = await self.rpc("model/list", {"includeHidden": False, "cursor": cursor})
@@ -191,12 +192,12 @@ class CodexAdapter:
 
     async def send(self, payload):
         if not self.process or self.process.returncode is not None:
-            raise BridgeError("Codex app-server non in esecuzione.")
+            raise BridgeError(t('errors.codex.codex_app_server_is_not_running'))
         try:
             self.process.stdin.write((json.dumps(payload, ensure_ascii=False) + "\n").encode())
             await self.process.stdin.drain()
         except (BrokenPipeError, ConnectionError) as e:
-            raise BridgeError("Connessione stdio Codex interrotta.") from e
+            raise BridgeError(t('errors.codex.codex_stdio_connection_interrupted')) from e
 
     async def rpc(self, method, params):
         self.sequence += 1
@@ -207,7 +208,7 @@ class CodexAdapter:
             await self.send({"id": ident, "method": method, "params": params})
             return await asyncio.wait_for(future, min(self.config.timeout, 30))
         except TimeoutError as e:
-            raise BridgeError(f"Timeout Codex RPC: {method}.") from e
+            raise BridgeError(t('errors.codex.codex_rpc_timeout' ,p0=method)) from e
         finally:
             self.requests.pop(ident, None)
 
@@ -216,7 +217,7 @@ class CodexAdapter:
             self.stderr_tail.append(line.decode(errors="replace").rstrip())
 
     async def _read(self):
-        problem = BridgeError("Codex app-server ha chiuso la connessione.")
+        problem = BridgeError(t('errors.codex.connection_closed'))
         try:
             while line := await self.process.stdout.readline():
                 event = json.loads(line)
@@ -226,8 +227,8 @@ class CodexAdapter:
                     if method in {"item/commandExecution/requestApproval", "item/fileChange/requestApproval"}:
                         await self.send({"id": event["id"], "result": {"decision": "decline"}})
                     else:
-                        await self.send({"id": event["id"], "error": {"code": -32601, "message": "AlterEcho non consente strumenti o richieste esterne."}})
-                    await self.events.put({"method": "bridge/securityError", "params": {"message": f"Richiesta Codex rifiutata: {method}"}})
+                        await self.send({"id": event["id"], "error": {"code": -32601, "message": t('errors.codex.tools_disabled')}})
+                    await self.events.put({"method": "bridge/securityError", "params": {"message": t('errors.codex.request_rejected', method=method)}})
                 elif "id" in event:
                     future = self.requests.get(event["id"])
                     if future and not future.done():
@@ -238,7 +239,7 @@ class CodexAdapter:
                 else:
                     await self.events.put(event)
         except (ValueError, OSError) as e:
-            problem = BridgeError(f"Protocollo Codex: {e}")
+            problem = BridgeError(t('errors.codex.protocol', error=e))
         finally:
             for future in list(self.requests.values()):
                 if not future.done():
@@ -254,11 +255,11 @@ class CodexAdapter:
                 and (conversation.pending or {}).get("speaker") != "codex"):
             conversation.codex_thread_id = None
         if cfg.codex_model not in {m.get("model") for m in self.catalog}:
-            raise BridgeError("Modello Codex assente dal catalogo. Usa doctor o la selezione interattiva.")
+            raise BridgeError(t('errors.codex.codex_model_absent_from_catalog_use_doctor_or_interactive_selection'))
         selected = next(m for m in self.catalog if m.get("model") == cfg.codex_model)
         efforts = {e["reasoningEffort"] for e in selected.get("supportedReasoningEfforts", [])}
         if efforts and cfg.codex_effort not in efforts:
-            raise BridgeError(f"Ragionamento {cfg.codex_effort} non supportato; disponibili: {', '.join(sorted(efforts))}.")
+            raise BridgeError(t('errors.codex.reasoning_unsupported_available' ,p0=cfg.codex_effort, p1=', '.join(sorted(efforts))))
         params = {"model": cfg.codex_model, "modelProvider": "openai", "cwd": str(Path(cfg.codex_work_dir).resolve()),
                   "approvalPolicy": "never", "approvalsReviewer": "user", "sandbox": "read-only",
                   "baseInstructions": instructions(cfg, "codex"), "developerInstructions": "Dialogo soltanto testuale. Nessuno strumento è autorizzato.",
@@ -270,13 +271,13 @@ class CodexAdapter:
             await self._verify_resume(conversation, checkpoint, response["thread"])
         else:
             if conversation.codex_synced_messages or any(m.speaker == "codex" for m in conversation.messages):
-                raise BridgeError("Sessione Codex mancante: impossibile ripristinare la memoria senza duplicazioni.")
+                raise BridgeError(t('errors.codex.codex_session_missing_memory_cannot_be_restored_without_duplication'))
             response = await self.rpc("thread/start", params)
             self.thread_id = response["thread"]["id"]
             conversation.codex_thread_id = self.thread_id
             checkpoint()
         if response.get("model") and response["model"] != cfg.codex_model:
-            raise BridgeError("Codex ha selezionato un modello diverso da quello richiesto.")
+            raise BridgeError(t('errors.codex.codex_selected_a_different_model_than_requested'))
 
     async def _verify_resume(self, conversation, checkpoint, thread):
         turns = thread.get("turns", [])
@@ -284,18 +285,18 @@ class CodexAdapter:
         pending = conversation.pending
         if pending and pending.get("speaker") == "codex":
             if pending.get("turn_id") and (not last or last.get("id") == conversation.codex_turn_id):
-                raise BridgeError("Turno Codex avviato ma assente dallo storico ripristinato: ripresa rifiutata.")
+                raise BridgeError(t('errors.codex.codex_turn_started_but_absent_from_restored_history_resume_rejected'))
             # A completed response may have reached Codex's rollout before the local atomic save.
             if last and last.get("id") != conversation.codex_turn_id:
                 actual = pending.get("turn_id")
                 inputs = [i for i in last.get("items", []) if i.get("type") == "userMessage"]
                 text = "".join(p.get("text", "") for i in inputs for p in i.get("content", []) if p.get("type") == "text")
                 if (actual and last.get("id") != actual) or text != pending.get("input"):
-                    raise BridgeError("Sessione Codex modificata esternamente: ripresa rifiutata.")
+                    raise BridgeError(t('errors.codex.codex_session_externally_modified_resume_rejected'))
                 if last.get("status") != "completed" or not agent_text(last):
-                    raise BridgeError("Turno Codex incompleto/interrotto: storico salvato, ripresa automatica rifiutata per evitare duplicazioni. Avvia un nuovo dialogo.")
+                    raise BridgeError(t('errors.codex.incomplete_interrupted_codex_turn_history_saved_automatic_resume_rejected_to_avoid_duplicates_s'))
                 if any(i.get("type") in {"contextCompaction", "commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall"} for i in last.get("items", [])):
-                    raise BridgeError("Turno Codex con strumenti o compattazione: ripresa rifiutata.")
+                    raise BridgeError(t('errors.codex.codex_turn_used_tools_or_compaction_resume_rejected'))
                 conversation.messages.append(Message("codex", self.config.codex_model, agent_text(last), pending.get("seconds", 0)))
                 conversation.codex_turn_id = last["id"]
                 conversation.codex_synced_messages = len(conversation.messages)
@@ -303,16 +304,16 @@ class CodexAdapter:
             conversation.pending = None
             checkpoint()
         elif last and last.get("id") != conversation.codex_turn_id:
-            raise BridgeError("Thread Codex fuori sincronia con il salvataggio locale.")
+            raise BridgeError(t('errors.codex.codex_thread_out_of_sync_with_local_history'))
         completed = [m for m in conversation.messages if m.speaker == "codex"]
         if completed and (not last or agent_text(last) != completed[-1].text):
-            raise BridgeError("Ultima risposta Codex non corrisponde allo storico salvato.")
+            raise BridgeError(t('errors.codex.last_codex_response_does_not_match_saved_history'))
 
     async def generate(self, conversation, checkpoint):
         cfg = self.config
         text = conversation.messages[-1].text if conversation.messages else initial_input()
         if len(conversation.messages) - conversation.codex_synced_messages > 1:
-            raise BridgeError("Cronologia Codex non sincronizzata.")
+            raise BridgeError(t('errors.codex.codex_history_is_out_of_sync'))
         # Discard only notifications from setup/previous completed turns, never protocol failures.
         while not self.events.empty():
             event = self.events.get_nowait()
@@ -341,14 +342,14 @@ class CodexAdapter:
                     if p.get("threadId") not in (None, self.thread_id) or p.get("turnId") not in (None, self.turn_id):
                         continue
                     if method == "error" and not p.get("willRetry", False):
-                        raise BridgeError(f"Codex: {p.get('error', p)}")
+                        raise BridgeError(t('errors.codex.codex' ,p0=p.get('error', p)))
                     if method == "thread/compacted":
-                        raise BridgeError("Codex ha compattato il contesto: arresto per evitare perdita silenziosa di memoria.")
+                        raise BridgeError(t('errors.codex.codex_compacted_context_stopped_to_prevent_silent_memory_loss'))
                     if method in {"item/started", "item/completed"}:
                         item = p.get("item", {})
                         kind = item.get("type")
                         if kind not in {"userMessage", "agentMessage", "reasoning"}:
-                            raise BridgeError(f"Elemento Codex non autorizzato: {kind}. Dialogo arrestato.")
+                            raise BridgeError(t('errors.codex.unauthorized_codex_item_dialogue_stopped' ,p0=kind))
                         if method == "item/completed" and kind == "agentMessage":
                             items[item["id"]] = item
                     if method == "item/agentMessage/delta":
@@ -365,21 +366,21 @@ class CodexAdapter:
                         usage = {"input_tokens": raw.get("inputTokens"), "output_tokens": raw.get("outputTokens"), "cached_input_tokens": raw.get("cachedInputTokens"), "reasoning_output_tokens": raw.get("reasoningOutputTokens")}
                         window = p["tokenUsage"].get("modelContextWindow")
                         if window and raw.get("totalTokens", 0) >= window - 2048:
-                            raise BridgeError("Codex vicino al limite reale di contesto.")
+                            raise BridgeError(t('errors.codex.codex_approaching_the_actual_context_limit'))
                     if method == "turn/completed":
                         final = p["turn"]
                         if final["id"] != self.turn_id:
                             continue
                         if final.get("status") != "completed":
-                            raise BridgeError(f"Turno Codex {final.get('status')}: {final.get('error')}")
+                            raise BridgeError(t('errors.codex.codex_turn' ,p0=final.get('status'), p1=final.get('error')))
                         break
             text = agent_text(final) or agent_text({"items": list(items.values())})
             if not text.strip():
-                raise BridgeError("Risposta Codex vuota o evento agentMessage finale assente.")
+                raise BridgeError(t('errors.codex.empty_codex_response_or_missing_final_agentmessage_event'))
             self.turn_id = None
             return Reply(text, cfg.codex_model, usage)
         except TimeoutError as e:
-            raise BridgeError("Timeout del turno Codex; storico conservato.") from e
+            raise BridgeError(t('errors.codex.codex_turn_timed_out_history_preserved')) from e
         finally:
             if conversation.pending:
                 conversation.pending["seconds"] = time.monotonic() - started
