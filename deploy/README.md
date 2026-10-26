@@ -1,8 +1,39 @@
 # Installazione persistente
 
-Queste procedure sono esempi da revisionare sul sistema di destinazione. Non vengono eseguite dall'installazione del pacchetto. Tutte avviano `alterecho serve`, con directory assolute e un account con permessi limitati. Prima verifica in primo piano, effettua un backup e configura Codex/Ollama sotto l'account corretto.
+## Installazione da GitHub Releases e GHCR
+
+Il workflow di distribuzione è predisposto per il push di nuovi tag `vMAJOR.MINOR.PATCH`. Nessuna nuova release è stata pubblicata da questa revisione. Quando disponibile, scarica gli allegati da [GitHub Releases](https://github.com/giovannirob/AlterEcho/releases) con un account autorizzato e verifica i checksum. La release elenca soltanto gli archivi prodotti e verificati.
+
+Per il wheel, da un ambiente Python 3.11+:
+
+```sh
+python -m pip install "alterecho-1.1.0-py3-none-any.whl[server]"
+alterecho serve
+```
+
+Gli standalone vanno estratti in una cartella stabile; su Linux/macOS usa `./alterecho serve`, su Windows `./alterecho.exe serve`. Il binario comprende CLI, server e statici, mentre Codex e Ollama restano esterni. Gli archivi Linux richiedono glibc 2.35+; gli archivi macOS non sono firmati o notarizzati. Gatekeeper può richiedere una decisione esplicita dell’utente dopo la verifica della provenienza; non viene disattivato automaticamente.
+
+Per l’immagine privata GHCR, autenticati come descritto nella [guida release](../docs/RELEASE.md#docker--ghcr), prepara il token del servizio in `secrets/service-token.txt` e usa il file Compose senza build:
+
+```sh
+export ALTERECHO_VERSION=1.1.0
+docker compose -f compose.registry.yaml pull
+docker compose -f compose.registry.yaml up -d --no-build
+docker compose -f compose.registry.yaml logs -f
+docker compose -f compose.registry.yaml stop
+```
+
+In PowerShell imposta `$env:ALTERECHO_VERSION='1.1.0'`. Usa una versione effettivamente pubblicata; `latest` è aggiornato soltanto dalle stabili. `compose.registry.yaml` mantiene localhost, volumi, secret separato e utente non privilegiato dell’immagine. Conserva lo stesso progetto Compose e fai backup dei volumi durante gli aggiornamenti; non usare `down -v` per aggiornare. Il `compose.yaml` originale rimane disponibile per compilare dal sorgente.
+
+La [guida del manutentore](../docs/RELEASE.md) documenta tag, prerelease, permessi, ruleset, GHCR privato e recupero da una pubblicazione fallita. Nessun servizio, permesso remoto o package è stato attivato automaticamente.
+
+Queste procedure sono esempi da revisionare sul sistema di destinazione. Non vengono eseguite dall'installazione del pacchetto. Tutte avviano `alterecho serve --foreground`, con directory assolute e un account con permessi limitati. Prima verifica in primo piano, effettua un backup e configura Codex/Ollama sotto l'account corretto.
 
 ## Linux / systemd
+
+Dalla versione 1.1 `serve` da solo è detached: i template usano esplicitamente **`serve --foreground`** per lasciare il controllo al supervisore. Per prove locali senza installare servizi puoi usare `alterecho serve`, consultare URL/PID/log nell’output e arrestare con `alterecho down`. Questa modalità sopravvive al terminale ma non abilita l’avvio al boot. I log sono nella directory dati `logs/server.log`; sotto un supervisore restano nei percorsi/journal configurati dal supervisore stesso.
+
+`down` non arresta istanze avviate in foreground da systemd, launchd, WinSW o Docker: usa i comandi riportati sotto. Non cancellare i file di lease mentre il server è attivo.
 
 Esempio per una distribuzione con `useradd` e Python 3.11+, eseguito dall'amministratore dopo revisione:
 
@@ -11,7 +42,7 @@ sudo useradd --system --home /var/lib/alterecho --shell /usr/sbin/nologin altere
 sudo install -d -o alterecho -g alterecho -m 0700 /var/lib/alterecho /var/lib/alterecho-codex
 sudo install -d -m 0755 /opt/alterecho
 sudo python3 -m venv /opt/alterecho/venv
-sudo /opt/alterecho/venv/bin/pip install '/percorso/alterecho-1.0.0-py3-none-any.whl[server]'
+sudo /opt/alterecho/venv/bin/pip install '/percorso/alterecho-1.1.0-py3-none-any.whl[server]'
 sudo install -d -m 0750 /etc/alterecho
 sudo install -m 0644 deploy/systemd/alterecho.service /etc/systemd/system/alterecho.service
 ```
@@ -59,7 +90,7 @@ Esempio di preparazione (PowerShell amministrativa, percorsi da verificare):
 
 ```powershell
 python -m venv C:\ProgramData\AlterEcho\venv
-C:\ProgramData\AlterEcho\venv\Scripts\python.exe -m pip install 'C:\pacchetti\alterecho-1.0.0-py3-none-any.whl[server]'
+C:\ProgramData\AlterEcho\venv\Scripts\python.exe -m pip install 'C:\pacchetti\alterecho-1.1.0-py3-none-any.whl[server]'
 ```
 
 Metti il binario WinSW come `C:\ProgramData\AlterEcho\AlterEcho.exe` e copia `windows/AlterEcho.xml` accanto con lo stesso nome base. Crea `state`, `codex` e `logs`. Il template usa **LocalService**, non LocalSystem. Configura ACL: LocalService deve poter modificare solo directory dati/Codex/log; la directory del programma va protetta da modifiche non amministrative. Per un account dedicato modifica `serviceaccount` secondo la versione WinSW utilizzata e concedi il diritto di accesso come servizio. Evita password in chiaro in file condivisi.

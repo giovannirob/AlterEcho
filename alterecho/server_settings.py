@@ -36,7 +36,7 @@ class ServerSettings:
         if not token and os.environ.get("ALTERECHO_TOKEN_FILE"):
             token = Path(os.environ["ALTERECHO_TOKEN_FILE"]).read_text(encoding="utf-8").strip()
         return cls(host=host or os.environ.get("ALTERECHO_HOST", "127.0.0.1"),
-                   port=port or int(os.environ.get("ALTERECHO_PORT", "8765")),
+                   port=port if port is not None else int(os.environ.get("ALTERECHO_PORT", "8765")),
                    token=token,
                    origins=[v.strip().rstrip("/") for v in os.environ.get("ALTERECHO_ORIGINS", "").split(",") if v.strip()],
                    allowed_hosts=[v.strip() for v in os.environ.get("ALTERECHO_ALLOWED_HOSTS", "").split(",") if v.strip()])

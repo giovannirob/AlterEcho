@@ -1,0 +1,34 @@
+# Use explicitly: docker compose -f compose.registry.yaml up -d --no-build
+# A published version and authentication to the private GHCR package are required.
+services:
+  alterecho:
+    image: ghcr.io/giovannirob/alterecho:${ALTERECHO_VERSION:?Set a published AlterEcho version}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      ALTERECHO_TOKEN_FILE: /run/secrets/alterecho_token
+      ALTERECHO_ORIGINS: ${ALTERECHO_ORIGINS:-http://127.0.0.1:8765,http://localhost:8765}
+      ALTERECHO_ALLOWED_HOSTS: ${ALTERECHO_ALLOWED_HOSTS:-127.0.0.1,localhost,alterecho}
+      ALTERECHO_OLLAMA_HOSTS: ${ALTERECHO_OLLAMA_HOSTS:-host.docker.internal}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - alterecho_data:/var/lib/alterecho
+      - codex_state:/var/lib/alterecho-codex
+    secrets:
+      - alterecho_token
+    stop_grace_period: 45s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+secrets:
+  alterecho_token:
+    file: ./secrets/service-token.txt
+volumes:
+  alterecho_data:
+  codex_state:

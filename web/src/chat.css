@@ -1,0 +1,28 @@
+/* Screen layout only; message, scrolling and dialog styles live with components. */
+.shell.chat-shell {height:100dvh;min-height:0;overflow:hidden}
+.chat-workspace.workspace {padding:0;max-width:none;margin:0;height:100dvh;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.chat-workspace>.alert {flex-shrink:0;margin:8px 20px 0;padding:8px 12px}
+.dialog-summary {display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:12px}
+.dialog-summary dt {color:var(--muted)}
+.dialog-summary dd {margin:0;overflow-wrap:anywhere}
+.markdown {font-size:15px;line-height:1.85}
+.markdown pre {max-width:100%;font-size:13px}
+.markdown li+li {margin-top:6px}
+.markdown img {max-width:100%}
+.markdown :first-child {margin-top:0}
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {outline:2px solid var(--accent);outline-offset:3px}
+:root[data-theme=light] {--bg:#f1f6f5;--panel-soft:#fbfdfc;--line:#d6e4e0;--muted:#526d67;--b:#7560ae}
+:root[data-theme=light] aside {background:#e8f1ee}
+:root[data-theme=light] .welcome {background:linear-gradient(115deg,#d9eee7,transparent)}
+.profile-editor .form-grid {gap:16px}
+@media(max-width:700px) {
+  .shell.chat-shell {display:flex;flex-direction:column}
+  .chat-shell>aside {position:relative;flex-shrink:0}
+  .chat-workspace.workspace {height:auto;flex:1;min-height:0}
+  .chat-shell .brand {font-size:14px}
+  .chat-shell aside {padding-top:max(10px,env(safe-area-inset-top))}
+  .chat-shell nav {margin-top:7px}
+  .markdown {font-size:14px}
+  .dialog-summary {grid-template-columns:1fr;gap:3px}
+  .dialog-summary dd {margin-bottom:10px}
+}

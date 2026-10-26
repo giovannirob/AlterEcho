@@ -85,7 +85,7 @@ class APIClient:
         if cursor:
             headers["Last-Event-ID"] = cursor
         try:
-            with self.session.stream("GET", f"/api/v1/conversations/{cid}/events", headers=headers, timeout=None) as response:
+            with self.session.stream("GET", f"/api/v1/conversations/{cid}/events", headers=headers, timeout=httpx.Timeout(45, connect=5)) as response:
                 self.check(response)
                 data = []
                 for line in response.iter_lines():

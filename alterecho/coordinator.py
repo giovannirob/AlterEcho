@@ -39,7 +39,7 @@ class Coordinator:
                 # exposes native deltas without synthesizing streaming.
                 def checkpoint():
                     self.checkpoint()
-                checkpoint.delta = lambda slot, model, text: self.emit("message.delta", {"speaker": slot, "model": model, "delta": text})
+                checkpoint.delta = lambda slot, model, text: self.emit("message.delta", {"speaker": slot, "model": model, "delta": text, "index": len(c.messages) + 1})
                 reply = await self.adapters[speaker].generate(c, checkpoint)
                 m = Message(speaker, reply.model, reply.text, time.monotonic() - start, usage=reply.usage)
                 c.messages.append(m)

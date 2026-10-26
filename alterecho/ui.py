@@ -42,7 +42,7 @@ class Terminal:
         self.say(f"[{count}/{total}] {self.labels.get(speaker, speaker)} sta rispondendo… · {status} · Ctrl+C scollega il client")
 
     def message(self, m, count, total):
-        style = "cyan" if m.speaker == "codex" else "green"
+        style = "cyan" if m.speaker in {"codex", "A"} else "magenta"
         usage = m.usage
         details = f"{m.seconds:.2f}s"
         if usage.get("input_tokens") is not None:

@@ -6,7 +6,7 @@ Scegli due intelligenze artificiali, assegna un tema e segui come si rispondono:
 
 AlterEcho gestisce la conversazione e la sua memoria. Tu puoi osservarla dal browser o dal terminale, metterla in pausa e tornarci in seguito.
 
-**Versione 1.0** · Python 3.11+ · Web UI e CLI
+**Versione 1.1** · Python 3.11+ · Web UI e CLI
 
 [Provalo](#provalo) · [Interfaccia](#uno-sguardo-allinterfaccia) · [Documentazione](#documentazione)
 
@@ -46,7 +46,7 @@ La Web UI usa uno stile essenziale, con tema chiaro e scuro e un layout pensato 
 
 ### Prepara i due interlocutori
 
-![Schermata reale di creazione: profili Codex e Ollama, modelli, argomento, modalità dibattito, primo interlocutore e numero di messaggi.](docs/images/nuova-conversazione.png)
+![Creazione nella 1.1: profili A e B e tendine dei modelli alimentate da cataloghi simulati di test.](docs/images/1.1/nuova-conversazione.png)
 
 Scegli A e B, assegna il tema e imposta lo scambio. Le opzioni avanzate raccolgono personalità, ragionamento e parametri dei provider; **Prova demo** permette di esplorare il flusso senza modelli reali.
 
@@ -59,7 +59,13 @@ Qui gestisci i profili, non i valori delle chiavi API. Le credenziali dei provid
 
 </details>
 
-Le schermate sono autentiche e fornite dall'autore. Non è ancora inclusa una cattura dei messaggi durante una conversazione. [Provenienza e dettagli delle immagini](docs/images/README.md).
+### Segui la conversazione
+
+![Chat AlterEcho 1.1: tre messaggi distinti per interlocutore, con copia, dettagli e comandi compatti. Contenuti simulati.](docs/images/1.1/chat-desktop.png)
+
+La chat segue le nuove risposte quando sei in fondo; se risali per leggere, mantiene la tua posizione. Una freccia ti riporta all’ultimo messaggio. Modelli e ragionamento si scelgono dai cataloghi verificati, mentre le azioni usano modali con riepilogo e conferme esplicite per le API a consumo.
+
+*Dashboard e profili sono screenshot originali 1.0 forniti dall’autore. Le catture 1.1 provengono dall’app reale durante test con provider e contenuti simulati, senza inferenze AI.* [Provenienza e dettagli delle immagini](docs/images/README.md).
 
 ## Come funziona?
 
@@ -68,6 +74,22 @@ Un unico servizio centrale gestisce conversazioni, memoria, provider e salvatagg
 ![Schema: terminale e browser si collegano entrambi ad AlterEcho Server, che gestisce Codex CLI, Ollama, OpenAI API e OpenRouter API.](docs/images/architettura.svg)
 
 Chiudere il browser o scollegare la CLI **non interrompe una conversazione in corso**. Il server deve restare acceso; puoi eseguirlo in primo piano, in Docker o come servizio di sistema. Non serve un ambiente desktop sul server.
+
+## Download e installazione
+
+Le distribuzioni saranno disponibili negli allegati delle [GitHub Releases](https://github.com/giovannirob/AlterEcho/releases), accessibili agli utenti autorizzati del repository privato. Il sistema automatico è predisposto: **la prima pubblicazione da tag deve ancora essere autorizzata e verificata**. Questo lavoro non pubblica nuovi download.
+
+| Sistema | File da scegliere nella release |
+| --- | --- |
+| Windows x64 | `AlterEcho-VERSIONE-windows-x64.zip` |
+| Linux x64 / ARM64 | `AlterEcho-VERSIONE-linux-x64.tar.gz` / `AlterEcho-VERSIONE-linux-arm64.tar.gz` |
+| macOS Apple Silicon / Intel | `AlterEcho-VERSIONE-macos-arm64.tar.gz` / `AlterEcho-VERSIONE-macos-x64.tar.gz` |
+| Python | Wheel `.whl`, oppure sorgenti `.tar.gz` |
+| Docker | `ghcr.io/giovannirob/alterecho:VERSIONE`, nella sezione Packages |
+
+Scarica solo i file effettivamente presenti e verifica `SHA256SUMS.txt`. Estrai lo standalone e usa `alterecho serve`, oppure installa il wheel con `python -m pip install "alterecho-VERSIONE-py3-none-any.whl[server]"`. Apri **http://127.0.0.1:8765** con il token del tuo server. Su Linux è richiesta glibc 2.35+; le build macOS non sono firmate/notarizzate e Gatekeeper può bloccarle.
+
+Per immagini private GHCR serve autenticarsi con un account autorizzato. [Installazione da release e container](deploy/README.md#installazione-da-github-releases-e-ghcr). Per pubblicare una nuova versione: [guida del manutentore](docs/RELEASE.md).
 
 ## Provalo
 
@@ -105,7 +127,7 @@ alterecho serve
 
 Apri **http://127.0.0.1:8765**. Al primo avvio locale il server crea `server-token` nella sua cartella di configurazione: copia quel valore nel modulo di accesso della Web UI. [Dove trovare il token](docs/GUIDA.md#token-del-server).
 
-Lascia aperto il terminale del server. In un **secondo terminale**, usando lo stesso ambiente Python, esegui:
+Il server si avvia in background e restituisce il terminale dopo la verifica di avvio. Nello **stesso terminale**, usando lo stesso ambiente Python, esegui:
 
 ```sh
 alterecho
@@ -121,7 +143,7 @@ Le build locali verificate producono un wheel, un archivio sorgente e uno standa
 Se hai il wheel corrispondente, puoi installarlo senza compilare il frontend:
 
 ```sh
-python -m pip install "dist/alterecho-1.0.0-py3-none-any.whl[server]"
+python -m pip install "dist/alterecho-1.1.0-py3-none-any.whl[server]"
 alterecho serve
 ```
 
@@ -149,15 +171,17 @@ Le API a consumo sono segnalate e richiedono conferma prima dell'avvio e della r
 Puoi iniziare un dialogo nel browser e seguirlo dalla CLI, o fare il contrario. Cronologia, impostazioni e operazioni appartengono al server condiviso.
 
 ```sh
+alterecho serve                        # Avvia in background
 alterecho status                       # Stato del servizio
 alterecho run                          # Crea e avvia un dialogo
 alterecho watch ID                     # Segui una conversazione
 alterecho pause ID                     # Sospendi tra i turni
 alterecho resume ID --turns 20         # Riprendi fino a 20 messaggi totali
 alterecho export ID --format html      # Scarica un HTML offline
+alterecho down                         # Arresta il server locale gestito
 ```
 
-Nella CLI **Ctrl+C scollega il client**; `alterecho stop ID` arresta la generazione sul server. Per la guida completa ai comandi usa `alterecho help`.
+Nella CLI **Ctrl+C scollega il client**; `alterecho stop ID` arresta la generazione sul server. Per diagnostica e servizi usa `alterecho serve --foreground`. Per la guida completa ai comandi usa `alterecho help`.
 
 ## Anche da un altro dispositivo
 
@@ -175,5 +199,7 @@ Per l'accesso remoto usa autenticazione e **HTTPS**, normalmente attraverso un r
 | CLI remota, LAN e reverse proxy | [Accesso da altri dispositivi](docs/GUIDA.md#cli-su-un-altro-computer) |
 | Salvataggi, backup e migrazione | [Percorsi e storici](docs/GUIDA.md#percorsi-backup-e-migrazione) |
 | Architettura, API e sicurezza | [Documentazione tecnica](ARCHITETTURA.md) |
-| Test eseguiti e limiti delle verifiche | [Resoconto locale](docs/VERIFICA.md) |
+| Test eseguiti e limiti delle verifiche | [Resoconto locale](docs/VERIFICA-1.1.md) |
+| Modifiche per versione e lavoro non ancora rilasciato | [Changelog](CHANGELOG.md) |
+| Tag, build native e pubblicazione automatica | [Guida release](docs/RELEASE.md) · [Verifiche della pipeline](docs/VERIFICA-RELEASE.md) |
 | Errori di connessione, accesso e ripresa | [Risoluzione dei problemi](docs/GUIDA.md#risoluzione-dei-problemi-e-limiti) |

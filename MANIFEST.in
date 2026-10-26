@@ -1,9 +1,14 @@
-include README.md ARCHITETTURA.md config.example.toml
+include README.md ARCHITETTURA.md CHANGELOG.md config.example.toml
 recursive-include alterecho/static *
 recursive-include alterecho/exporters/templates *
 recursive-include web/src *.svelte *.ts *.css
 include web/package.json web/package-lock.json web/vite.config.ts web/tsconfig.json web/index.html
-recursive-include deploy *
+include web/playwright.config.ts
+recursive-include web/e2e *.ts
+recursive-include deploy *.py *.spec *.md *.service *.plist *.xml *.example *.txt *.yaml *.yml
+include deploy/Caddyfile
+recursive-include .github/workflows *.yml
 recursive-include tests *.py
-recursive-include docs *.md
-include Dockerfile .dockerignore compose.yaml
+recursive-include docs *.md *.png *.svg
+include Dockerfile .dockerignore compose.yaml compose.registry.yaml
+global-exclude *.py[cod] .env .env.* auth.json server-token client.json config.json adapters.json

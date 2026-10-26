@@ -52,14 +52,18 @@ def parser():
     commands["export"] = export
     export.add_argument("path", help="ID conversazione o nome di uno storico sul server")
     export.add_argument("--format", dest="formats", nargs="+", choices=["md", "txt", "html"], help="Genera soltanto i formati indicati; senza opzione genera tutti i formati")
-    for name in ("status", "stop", "pause", "watch", "web", "connect", "serve"):
-        command = sub.add_parser(name)
+    for name in ("status", "stop", "pause", "watch", "web", "connect", "serve", "down"):
+        command = sub.add_parser(name, **({"help": "Avvia il server in background senza finestre (predefinito)",
+                                          "description": "Avvia il server in background senza finestre. Non serve --detach; usa --foreground per diagnostica e servizi."} if name == "serve" else {}))
         commands[name] = command
         if name in {"stop", "pause", "watch"}:
             command.add_argument("id", help="ID conversazione sul server")
         if name == "serve":
             command.add_argument("--host")
             command.add_argument("--port", type=int)
+            mode = command.add_mutually_exclusive_group()
+            mode.add_argument("--detach", action="store_true", help="Avvio in background (predefinito)")
+            mode.add_argument("--foreground", action="store_true", help="Primo piano per diagnostica, Docker e servizi")
         if name == "connect":
             command.add_argument("--token-file", help="File locale protetto contenente il token del servizio")
     for name in ("run", "resume"):
@@ -85,47 +89,7 @@ def resolve_id(client, reference):
     return quote(matches[0], safe="")
 
 
-async def watch(client, cid, ui):
-    cursor, shown, streamed = None, 0, False
-    ui.say(f"Conversazione: {cid} · Ctrl+C scollega il client; 'alterecho stop {cid}' arresta la generazione.")
-    for attempt in range(10):
-        try:
-            for event in client.events(cid, cursor):
-                cursor = event["id"]
-                kind, data = event["type"], event["data"]
-                if kind == "state.snapshot":
-                    for index, message in enumerate(data["messages"], 1):
-                        if index > shown:
-                            ui.message(Message(**message), index, data["config"]["max_turns"])
-                    shown = len(data["messages"])
-                    if data.get("partial"):
-                        ui.say(data["partial"].get("text", ""))
-                elif kind == "turn.started":
-                    ui.say(f"{data['speaker']} sta rispondendo…")
-                elif kind == "message.delta":
-                    ui.console.print(safe_text(data["delta"]), end="", markup=False, highlight=False)
-                    streamed = True
-                elif kind == "message.completed":
-                    if streamed:
-                        ui.say("")
-                        streamed = False
-                    if data["index"] > shown:
-                        ui.message(Message(**data["message"]), data["index"], "…")
-                        shown = data["index"]
-                elif kind == "conversation.failed":
-                    ui.error(data.get("error") or "Generazione arrestata.")
-            state = client.get(f"/conversations/{cid}")
-            if not state["active"]:
-                ui.say(f"Stato: {state['status']} · {len(state['messages'])} messaggi · {state['stats']['seconds']:.2f}s")
-                if state.get("error"):
-                    ui.error(state["error"])
-                return 0 if state["status"] in {"completed", "paused"} else 1
-        except BridgeError:
-            if attempt == 9:
-                raise
-            ui.say("Stream disconnesso; riconnessione al server…")
-        await asyncio.sleep(min(attempt + 1, 5))
-    return 1
+from .watching import watch
 
 
 async def diagnose(cfg, ui, client=None):
@@ -157,6 +121,11 @@ async def execute(args, ui, preferences=None, client=None):
             return await diagnose(None, ui, client)
         if action == "status":
             state = client.get("/status")
+            if state.get("managed"):
+                from .managed import local_status
+                local = local_status()
+                if local and local["instance"] == state["managed"]["instance"]:
+                    ui.say(f"Processo locale gestito: {local['pid']} · log: {local['log']}")
             ui.say(f"Server {state['status']} · AlterEcho {state['version']} · {state['history_count']} conversazioni")
             for p in state["providers"]:
                 ui.say(f"{p['name']}: {'disponibile' if p['available'] else p.get('error', 'errore')}")
@@ -167,7 +136,7 @@ async def execute(args, ui, preferences=None, client=None):
             ui.say(str(client.post(f"/conversations/{args.id}/{action}")))
             return 0
         if action == "watch":
-            return await watch(client, args.id, ui)
+            return await watch(client, resolve_id(client, args.id), ui)
         if action == "export":
             cid = resolve_id(client, args.path)
             for fmt in args.formats or ("md", "txt", "html"):
@@ -320,7 +289,19 @@ def main(argv=None):
                 from .server import serve
             except ImportError as e:
                 raise BridgeError("Installa il server con pip install 'alterecho[server]'.") from e
-            serve(args.host, args.port)
+            if args.foreground:
+                serve(args.host, args.port)
+            else:
+                from .managed import background
+                from . import __version__
+                result = background(args.host, args.port)
+                ui.say(f"AlterEcho Server {__version__}\n✓ Server avviato\n  Indirizzo: {result['url']}\n  Processo: {result['pid']}\n  Modalità: background\n  Log: {result['log']}\n\nComandi: alterecho status · alterecho web · alterecho down")
+            return 0
+        if args.action == "down":
+            if args.server:
+                raise BridgeError("down gestisce solo il server locale di questo account e non accetta --server. Per servizi e Docker usa il relativo supervisore.")
+            from .managed import down
+            ui.say(f"Server locale arrestato (PID {down()}); checkpoint salvati.")
             return 0
         if args.action == "migrate":
             from .migration import migrate
@@ -344,7 +325,7 @@ def main(argv=None):
         finally:
             client.close()
     except KeyboardInterrupt:
-        ui.say("Client scollegato. Le conversazioni continuano sul server.")
+        ui.say("Server foreground arrestato; checkpoint conservati." if args.action == "serve" else "Client scollegato. Le conversazioni continuano sul server.")
         return 130
     except (BridgeError, OSError, ValueError, TypeError, KeyError) as e:
         ui.error(str(e))

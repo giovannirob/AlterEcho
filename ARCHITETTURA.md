@@ -1,4 +1,4 @@
-# Architettura AlterEcho 1.0
+# Architettura AlterEcho 1.1
 
 ## Un solo processo applicativo
 
@@ -8,9 +8,12 @@
 
 ## Organizzazione
 
+Dalla 1.1 `serve` avvia il processo detached e verifica readiness autenticata e identità dell’istanza; `serve --foreground` esegue direttamente Uvicorn per diagnostica e supervisori. `managed.py` serializza i comandi locali con un lease, gestisce log e metadati riservati e un canale TCP loopback autenticato distinto da HTTP. `down` richiede shutdown solo a quell’istanza; non invia segnali a un PID memorizzato e non esiste un endpoint pubblico di spegnimento. Il watchdog arresta gli avvii che il launcher non ha potuto confermare. Le lease applicative e il lifespan rimangono gli stessi in entrambe le modalità.
+
 | Modulo | Responsabilità |
 | --- | --- |
 | `cli.py`, `client.py`, `ui.py` | Parser, client HTTP/SSE, menu Rich e preferenze remote |
+| `managed.py`, `watching.py` | Ciclo del processo locale verificato e rendering Rich incrementale deduplicato |
 | `server.py`, `server_settings.py` | API, statici, autenticazione, origini/host fidati, lease e ciclo del servizio |
 | `api_models.py` | Contratti Pydantic stretti, interlocutori A/B e limiti degli input |
 | `sessions.py` | Proprietà delle attività, stato, ripresa, diagnostica, checkpoint e snapshot |
@@ -83,8 +86,12 @@ Codex mantiene forced ChatGPT login, strict config, strumenti/MCP/app/plugin dis
 
 ## Frontend e distribuzione
 
+La conversazione è separata in `ConversationView` e `MessageBubble`: colonna centrale, header compatto, dettagli espandibili, identità stabili per indice del messaggio durante delta e completamento. Il Markdown viene ricalcolato solo quando cambia il testo della singola bolla. `requestAnimationFrame`, `tick` e `ResizeObserver` coordinano lo scroll dopo il layout; l’interazione manuale disabilita il follow e una freccia lo riattiva. Le posizioni rimangono in memoria nella sessione browser. Le riconnessioni recuperano snapshot e cursore insieme via SSE; un GET attivo senza cursore non viene sommato al replay.
+
+`ModelSelector` legge solo i cataloghi dei profili registrati; cataloghi vuoti, indisponibilità e valori rimossi sono visibili senza sostituzioni automatiche. `ConfirmDialog` usa un dialogo HTML modale con focus iniziale su Annulla, focus contenuto, Escape e ripristino del focus. `Toast` gestisce notifiche non bloccanti. Il consenso ai provider a consumo resta distinto dall’apertura della modale e il server lo verifica di nuovo.
+
 Svelte 5, Vite e TypeScript compilano in `alterecho/static`. Dashboard, creazione, configurazione, profili, cronologia, conversazioni, SSE e download usano gli stessi endpoint della CLI. Markdown viene renderizzato con HTML disabilitato e DOMPurify, senza immagini remote o schemi di link attivi. Tema chiaro/scuro e layout responsive non richiedono Electron/Tauri o un ambiente grafico sul server. Gli export HTML usano invece il renderer Python preesistente con risorse incorporate e CSP a hash.
 
 Wheel e sdist includono gli statici. L'extra `server` installa FastAPI/Uvicorn/Pydantic; il client può essere installato senza quelle dipendenze. PyInstaller usa la medesima entrypoint. Il Dockerfile compila la UI in uno stage Node, costruisce wheel in uno stage Python e usa un runtime non root. Lo stato Codex è in un volume distinto. Servizi systemd/launchd/WinSW avviano lo stesso comando con home persistente esplicita.
 
-Le verifiche e i limiti realmente osservati sono riportati in [docs/VERIFICA.md](docs/VERIFICA.md); non implicano l'esecuzione di CI o inferenze reali. Le fonti ufficiali consultate includono [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [Svelte TypeScript](https://svelte.dev/docs/svelte/typescript) e [Codex authentication](https://learn.chatgpt.com/docs/auth).
+Le verifiche e i limiti realmente osservati sono riportati in [docs/VERIFICA.md](docs/VERIFICA-1.1.md); non implicano l'esecuzione di CI o inferenze reali. Le fonti ufficiali consultate includono [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [Svelte TypeScript](https://svelte.dev/docs/svelte/typescript) e [Codex authentication](https://learn.chatgpt.com/docs/auth).

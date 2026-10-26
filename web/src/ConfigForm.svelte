@@ -1,11 +1,16 @@
 <script lang="ts">
   import type {Configuration, Profile, Provider, Side} from './api';
+  import ModelSelector from './ModelSelector.svelte';
+  import {efforts} from './catalog';
   export let value:Configuration;
   export let profiles:Profile[]=[];
   export let catalogs:Provider[]=[];
   export let compact=false;
+  export let loading=false;
+  export let refresh:()=>void=()=>{};
+  $: supported=efforts(value,catalogs);
   let optionsError='';
-  function selectProfile(side:Side) {const p=profiles.find(p=>p.id===value.participants[side].profile_id); if(p)value.participants[side]={profile_id:p.id,model:p.model};}
+  function selectProfile(side:Side) {const p=profiles.find(p=>p.id===value.participants[side].profile_id); if(p)value.participants[side]={profile_id:p.id,model:value.participants[side].model};}
   function options(event:Event) {try {const parsed=JSON.parse((event.target as HTMLTextAreaElement).value);if(!parsed||Array.isArray(parsed)||typeof parsed!=='object')throw Error();value.ollama_options=parsed;optionsError='';}catch {optionsError='Inserisci un oggetto JSON valido.';}}
 </script>
 
@@ -14,8 +19,7 @@
     {@const side=letter as Side}
     <fieldset class="participant"><legend><span class:side-b={side==='B'} class="side">{side}</span> Interlocutore {side}</legend>
       <label>Profilo<select bind:value={value.participants[side].profile_id} on:change={()=>selectProfile(side)}>{#each profiles.filter(p=>side==='A'||p.provider!=='codex') as p}<option value={p.id}>{p.name} · {p.provider}{p.billable?' · a consumo':''}</option>{/each}</select></label>
-      <label>Modello<input required bind:value={value.participants[side].model} list={'models-'+side} placeholder="Scegli dal catalogo o inserisci l'ID" /></label>
-      <datalist id={'models-'+side}>{#each catalogs.find(c=>c.profile_id===value.participants[side].profile_id)?.models||[] as m}<option value={typeof m==='string'?m:m.model}></option>{/each}</datalist>
+      <ModelSelector label={'Modello '+side} bind:value={value.participants[side].model} profileId={value.participants[side].profile_id} {catalogs} {loading} {refresh}/>
     </fieldset>
   {/each}
   <label class="wide">Argomento<textarea required rows="3" bind:value={value.topic}></textarea></label>
@@ -24,12 +28,13 @@
   <label>Messaggi totali<input required type="number" min="1" max="10000" bind:value={value.max_turns}/><small>10 messaggi = 5 risposte ciascuno</small></label>
   <label>Ritardo tra i turni (s)<input type="number" min="0" max="3600" step="0.1" bind:value={value.delay}/></label>
 </div>
+{#if supported.length&&!supported.includes(value.codex_effort)}<p role="alert" class="error-text">Il ragionamento salvato ({value.codex_effort}) non è supportato dal modello. Scegli un livello nelle opzioni avanzate.</p>{/if}
 <details open={compact}><summary>Personalità, ragionamento e opzioni avanzate</summary><div class="form-grid advanced">
   {#each ['A','B'] as letter}{@const side=letter as Side}
     <label>Personalità {side}<textarea rows="2" bind:value={value.roles[side]}></textarea></label>
     <label>Posizione iniziale {side}<textarea rows="2" bind:value={value.positions[side]}></textarea></label>
   {/each}
-  <label>Ragionamento Codex<select bind:value={value.codex_effort}>{#each ['none','minimal','low','medium','high','xhigh','max','ultra'] as effort}<option>{effort}</option>{/each}</select><small>Deve essere supportato dal modello scelto.</small></label>
+  {#if supported.length}<label>Ragionamento Codex<select aria-label="Ragionamento Codex" bind:value={value.codex_effort} required>{#if !supported.includes(value.codex_effort)}<option value={value.codex_effort} disabled>{value.codex_effort} · non supportato</option>{/if}{#each supported as effort}<option>{effort}</option>{/each}</select><small>Livelli restituiti dal catalogo del modello selezionato.</small></label>{:else}<div><small>Livelli di ragionamento non dichiarati dal catalogo. La configurazione esistente verrà verificata dal server.</small></div>{/if}
   <label>Timeout del turno (s)<input type="number" min="1" max="3600" bind:value={value.timeout}/></label>
   <label>Contesto Ollama<input type="number" min="512" bind:value={value.num_ctx}/></label>
   <label>Token risposta Ollama<input type="number" min="1" bind:value={value.num_predict}/></label>

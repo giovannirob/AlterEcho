@@ -36,11 +36,15 @@ def create_app(settings=None, manager=None):
             for lease in leases:
                 lease.acquire()
             manager.refresh()
+            if getattr(app.state, "local_control", None):
+                await app.state.local_control.start()
             yield
         finally:
             await manager.shutdown()
             for lease in leases:
                 lease.release()
+            if getattr(app.state, "local_control", None):
+                await app.state.local_control.close()
 
     app = FastAPI(title="AlterEcho", version=__version__, lifespan=lifespan,
                   docs_url="/api/v1/docs", openapi_url="/api/v1/openapi.json", redoc_url=None)
@@ -119,7 +123,7 @@ def create_app(settings=None, manager=None):
         return {"status": "stopping" if manager.closing else "ready", "version": __version__,
                 "active": [c for c in conversations if c["active"]], "providers": list(manager.provider_status.values()),
                 "history_count": len(conversations), "unreadable_histories": manager.scan_errors,
-                "single_worker": True}
+                "single_worker": True, "managed": getattr(app.state, "managed_identity", None)}
 
     @app.get("/api/v1/providers")
     async def available_providers():
@@ -298,6 +302,27 @@ def serve(host=None, port=None):
     print(f"Token locale: {settings.directory / 'server-token'} (oppure ALTERECHO_TOKEN)")
     # No reload/multiple workers: every task belongs to this process.
     trusted_proxies = os.environ.get("ALTERECHO_PROXY_IPS", "")
-    uvicorn.run(app, host=settings.host, port=settings.port, workers=1, access_log=False,
+    def request_shutdown():
+        # End owned generation tasks/checkpoints before Uvicorn drains SSE
+        # connections, so attached clients cannot delay graceful shutdown.
+        server.should_exit = True
+        try:
+            asyncio.get_running_loop().create_task(app.state.manager.shutdown())
+        except RuntimeError:
+            pass  # Lifespan still performs cleanup if startup has no loop yet.
+
+    class HeadlessServer(uvicorn.Server):
+        def handle_exit(self, sig, frame):
+            super().handle_exit(sig, frame)
+            request_shutdown()
+
+    server = HeadlessServer(uvicorn.Config(app, host=settings.host, port=settings.port, workers=1, access_log=False,
                 proxy_headers=bool(trusted_proxies), forwarded_allow_ips=trusted_proxies,
-                timeout_graceful_shutdown=30)
+                timeout_graceful_shutdown=30))
+    instance = os.environ.pop("ALTERECHO_MANAGED_ID", "")
+    secret = os.environ.pop("ALTERECHO_MANAGED_SECRET", "")
+    if instance and secret:
+        from .managed import LocalControl
+        app.state.managed_identity = {"instance": instance, "pid": os.getpid()}
+        app.state.local_control = LocalControl(settings, instance, secret, request_shutdown)
+    server.run()

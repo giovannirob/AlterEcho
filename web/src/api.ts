@@ -5,7 +5,8 @@ export type Configuration = {topic:string; mode:string; first:Side; max_turns:nu
 export type Message = {speaker:Side; model:string; text:string; timestamp:string; seconds:number; usage:Record<string,number>};
 export type Stats = {messages:number; seconds:number; speakers:Record<string,{input_tokens:number;output_tokens:number}>};
 export type Conversation = {id:string; created_at:string; status:string; active:boolean; config:Configuration; error?:string; message_count?:number; messages:Message[]; partial?:{speaker:Side;model:string;text:string}; stats:Stats; demo?:boolean; pause_requested?:boolean};
-export type Provider = {profile_id:string; name:string; provider:string; available:boolean; models:(string|{model:string})[]; error?:string};
+export type CatalogModel = string|{model:string;defaultReasoningEffort?:string;supportedReasoningEfforts?:({reasoningEffort:string;description?:string}|string)[]};
+export type Provider = {profile_id:string; name:string; provider:string; available:boolean; models:CatalogModel[]; error?:string};
 export type ServerEvent = {id:string; type:string; conversation_id:string; data:any};
 
 let token = '';
@@ -25,6 +26,7 @@ export async function download(id:string, format:string) {
 }
 export async function stream(id:string, onEvent:(event:ServerEvent)=>void, signal:AbortSignal, onRetry:()=>void) {
   let cursor='', retries=0;
+  const delivered=new Map<string,number>();
   while(!signal.aborted) {
     try {
       const response=await fetch(`/api/v1/conversations/${id}/events`,{headers:{Authorization:'Bearer '+token,...(cursor?{'Last-Event-ID':cursor}:{})},signal,credentials:'omit',redirect:'error'});
@@ -33,19 +35,22 @@ export async function stream(id:string, onEvent:(event:ServerEvent)=>void, signa
       try {
         while(true) {
           const chunk=await reader.read(); if(chunk.done) break;
-          buffer+=decoder.decode(chunk.value,{stream:true}).replace(/\r\n/g,'\n');
-          let boundary:number;
-          while((boundary=buffer.indexOf('\n\n'))>=0) {
-            const frame=buffer.slice(0,boundary); buffer=buffer.slice(boundary+2);
-            const data=frame.split('\n').filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');
-            if(data) {const event:ServerEvent=JSON.parse(data); cursor=event.id; onEvent(event); retries=0;}
+          buffer+=decoder.decode(chunk.value,{stream:true});
+          let boundary:RegExpExecArray|null;
+          while((boundary=/\r?\n\r?\n/.exec(buffer))) {
+            const frame=buffer.slice(0,boundary.index); buffer=buffer.slice(boundary.index+boundary[0].length);
+            const data=frame.split(/\r?\n/).filter(l=>l.startsWith('data:')).map(l=>l.slice(5).trimStart()).join('\n');
+            if(data) {const event:ServerEvent=JSON.parse(data); const split=event.id.lastIndexOf(':'),epoch=event.id.slice(0,split),sequence=Number(event.id.slice(split+1));
+              if(event.type==='state.snapshot'||sequence>(delivered.get(epoch)??-1)) {cursor=event.id;delivered.set(epoch,sequence);if(!signal.aborted)onEvent(event);}retries=0;}
           }
         }
       } finally {reader.releaseLock();}
       const state=await api<Conversation>(`/conversations/${id}`);
-      onEvent({id:cursor,type:'state.snapshot',conversation_id:id,data:state});
-      if(!state.active) return;
+      if(signal.aborted)return;
+      // An active GET has no atomic SSE cursor: applying it before replay would
+      // double deltas already present in its partial. Recover via SSE instead.
+      if(!state.active) {onEvent({id:cursor,type:'state.snapshot',conversation_id:id,data:state});return;}
     } catch(e) {if(signal.aborted)return; onRetry(); if(++retries>10)throw e;}
-    await new Promise<void>(resolve=>{const timer=setTimeout(resolve,Math.min(1000*(retries+1),5000)); signal.addEventListener('abort',()=>{clearTimeout(timer);resolve();},{once:true});});
+    await new Promise<void>(resolve=>{const done=()=>{clearTimeout(timer);signal.removeEventListener('abort',done);resolve();};const timer=setTimeout(done,Math.min(1000*(retries+1),5000)); signal.addEventListener('abort',done,{once:true});});
   }
 }

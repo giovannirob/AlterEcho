@@ -17,7 +17,7 @@ class DocumentPathTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.env = patch.dict(os.environ, {"ALTERECHO_HOME": "", "XDG_CONFIG_HOME": str(self.root / "config")})
         self.env.start()
         self.addCleanup(self.env.stop)

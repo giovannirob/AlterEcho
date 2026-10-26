@@ -18,7 +18,18 @@ Per questa revisione Computer Use ha impedito la cattura automatica perché non 
 
 La dashboard mostra titoli di conversazioni e contatori della sua istanza: non viene dichiarata una cattura con provider mock, né presentata come misura delle prestazioni. Le altre due schermate mostrano moduli di configurazione. Non sono visibili token, chiavi API o dati identificativi personali. Non sono state effettuate inferenze per produrre questi asset durante il lavoro di documentazione.
 
-Manca una schermata di una conversazione con messaggi e avanzamento. Per aggiungerla, usare la demo integrata o provider mock, senza mostrare conversazioni private.
+## Catture 1.1 del 26 ottobre 2026
+
+La cartella `1.1/` contiene screenshot reali acquisiti da Playwright/Chromium su Windows con il backend isolato `tests/browser_server.py`. I provider sono simulati e i testi sono fixture scritte per le prove: non sono risposte di Codex, Ollama o API reali, né benchmark. Non sono state ritoccate le catture o inserite interfacce fittizie.
+
+| File | Vista |
+| --- | --- |
+| `1.1/chat-desktop.png` | Chat desktop scura, tre messaggi simulati |
+| `1.1/chat-mobile-light.png` | Chat chiara nel viewport smartphone emulato |
+| `1.1/conferma.png` | Modale di avvio e consenso esplicito ai costi |
+| `1.1/nuova-conversazione.png` | Modelli selezionabili da cataloghi di test |
+
+I PNG originali forniti dall’autore restano conservati. Le schermate della 1.1 sono state ispezionate dopo la cattura. L’emulazione mobile non equivale a un test su dispositivo fisico.
 
 Usare soltanto provider mock o la demo integrata. Evitare login, token, chiavi, conversazioni private, notifiche e indirizzi personali nella cornice del browser. Annotare la provenienza delle immagini e mantenere visibile la natura dimostrativa dei contenuti. Nessuna inferenza reale è necessaria.
 

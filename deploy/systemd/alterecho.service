@@ -11,7 +11,7 @@ WorkingDirectory=/var/lib/alterecho
 Environment=ALTERECHO_HOME=/var/lib/alterecho
 Environment=CODEX_HOME=/var/lib/alterecho-codex
 EnvironmentFile=-/etc/alterecho/server.env
-ExecStart=/opt/alterecho/venv/bin/alterecho serve
+ExecStart=/opt/alterecho/venv/bin/alterecho serve --foreground
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=45

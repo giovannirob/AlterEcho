@@ -34,7 +34,7 @@ class IsolatedSettings:
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.env = patch.dict(os.environ, {"ALTERECHO_HOME": str(self.root / "personal")})
         self.env.start()
         self.addCleanup(self.env.stop)

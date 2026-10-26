@@ -7,7 +7,7 @@ COPY web/ ./
 RUN npm run check && npm run build
 
 FROM node:22-bookworm-slim AS codex
-ARG CODEX_VERSION=latest
+ARG CODEX_VERSION=0.164.0
 RUN npm install -g --omit=dev @openai/codex@${CODEX_VERSION}
 
 FROM python:3.12-slim-bookworm AS package
@@ -18,6 +18,14 @@ COPY --from=web /alterecho/static ./alterecho/static
 RUN pip wheel --no-cache-dir --wheel-dir /wheels '.[server]'
 
 FROM python:3.12-slim-bookworm AS runtime
+ARG VERSION=development
+ARG REVISION=local
+ARG SOURCE=https://github.com/giovannirob/AlterEcho
+LABEL org.opencontainers.image.title="AlterEcho" \
+    org.opencontainers.image.description="Headless AI conversation server with CLI and Web clients" \
+    org.opencontainers.image.source=$SOURCE \
+    org.opencontainers.image.version=$VERSION \
+    org.opencontainers.image.revision=$REVISION
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     ALTERECHO_HOME=/var/lib/alterecho CODEX_HOME=/var/lib/alterecho-codex \
     ALTERECHO_HOST=0.0.0.0 ALTERECHO_PORT=8765 \
@@ -37,4 +45,4 @@ EXPOSE 8765
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/api/v1/health',timeout=3).read()"]
 STOPSIGNAL SIGTERM
-CMD ["alterecho", "serve"]
+CMD ["alterecho", "serve", "--foreground"]

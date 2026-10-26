@@ -1,6 +1,8 @@
 .git
 .venv
 web/node_modules
+web/test-results
+web/playwright-report
 alterecho/static
 __pycache__
 **/__pycache__
@@ -13,6 +15,8 @@ work
 .test-*.log
 .env*
 secrets
+release-assets
+docker-artifacts
 **/auth.json
 **/server-token
 **/client.json

@@ -1,4 +1,4 @@
-# Guida all’uso di AlterEcho 1.0
+# Guida all’uso di AlterEcho 1.1
 
 [Torna alla presentazione](../README.md) · [Servizi e container](../deploy/README.md) · [Architettura](../ARCHITETTURA.md)
 
@@ -23,6 +23,35 @@ Si consiglia un virtualenv. Su Windows: `python -m venv .venv`, poi usa `.\.venv
 Con uv: `uv tool install ".[server]"`. Per un computer che deve usare solo la CLI: `pip install .` oppure `uv tool install .`; FastAPI/Uvicorn restano opzionali. Il codice del server è nello stesso pacchetto, ma `serve` richiede l'extra `server`.
 
 L'installazione non editable da wheel o sorgente non dipende dalla posizione del repository. I launcher storici `start.*` e `install-user.*` restano disponibili per sviluppo: continuano a riferirsi al virtualenv del checkout e non sono necessari per l'installazione normale.
+
+## Avvio e arresto locale dalla versione 1.1
+
+`alterecho serve` e `alterecho serve --detach` avviano lo stesso server in background, senza finestre o browser. Il comando attende fino a 30 secondi la risposta autenticata dell’istanza attesa e mostra URL, PID effettivo e file di log. Il processo continua dopo la chiusura del terminale; questo avvio locale non configura il riavvio automatico del computer.
+
+Su Windows l’avvio usa `CREATE_NO_WINDOW` e `SW_HIDE`, senza combinarli con `DETACHED_PROCESS`: Windows ignorerebbe il flag che impedisce la finestra. Vale anche quando Python è avviato dal redirector del virtualenv. Non serve aggiungere `--detach`; solo `--foreground` mantiene il server nel terminale.
+
+```sh
+alterecho serve
+alterecho status
+alterecho web
+alterecho down
+# In alternativa, log visibili e Ctrl+C per arrestare il server:
+alterecho serve --foreground --host 127.0.0.1 --port 8765
+```
+
+`down` opera solo sull’istanza locale creata dalla CLI, per lo stesso account e lo stesso `ALTERECHO_HOME`. Non usa `--server` e non spegne server remoti. Verifica un’identità casuale e un segreto locale su un canale loopback privato; un file PID da solo non autorizza alcuna terminazione. Attende fino a 45 secondi checkpoint e shutdown; in caso di blocco segnala l’errore senza forzare processi. I metadati obsoleti vengono rimossi solo dopo aver acquisito il lease dei dati. Un avvio senza verifica conclusiva viene arrestato dal watchdog del processo.
+
+Log detached: `<directory dati>/logs/server.log`, in append tra riavvii. Con `ALTERECHO_HOME`: `<ALTERECHO_HOME>/data/logs/server.log`; Windows predefinito: `%LOCALAPPDATA%/AlterEcho/logs/server.log`; Linux/macOS: `${XDG_DATA_HOME:-~/.local/share}/alterecho/logs/server.log`. I metadati riservati risiedono in `data/run/managed-server.json`. Non modificarli durante l’esecuzione e non pubblicarli; proteggi l’intera directory con ACL/permessi dell’account. La 1.1 non applica rotazione automatica: archivia i log a server fermo quando necessario.
+
+Per Docker, systemd, launchd e WinSW usa sempre `serve --foreground` e l’arresto del supervisore: `docker compose stop`, `systemctl stop alterecho`, `launchctl bootout …` o il comando `stop` WinSW. `down` non prende il controllo delle loro istanze. Un solo backend continua a possedere dati, task e provider.
+
+### Streaming CLI e chat Web
+
+`watch ID` accetta gli stessi ID o nomi di JSON indicizzati di `resume` ed `export`. Una chat conclusa viene stampata e il comando termina. Su un terminale interattivo Rich aggiorna solo il messaggio corrente e stampa ogni completamento una volta; in pipe/file stampa i messaggi completi senza ridisegni ANSI. Ctrl+C scollega soltanto il client. La ripresa SSE usa cursori e snapshot atomici per recuperare anche i parziali senza sommare nuovamente i frammenti.
+
+La pagina conversazione ha un’area di scorrimento dedicata: segue lo streaming quando sei in fondo; rotella, touch e tastiera consentono di leggere sopra senza essere riportati in basso. La freccia circolare torna all’ultimo messaggio. La posizione viene ricordata tra le pagine della stessa sessione browser; non è salvata tra ricaricamenti completi. I messaggi hanno Markdown progressivo sanitizzato, copia e dettagli espandibili; non c’è un campo di chat manuale.
+
+Nei moduli ordinari i modelli si scelgono dai cataloghi verificati con `doctor`, senza inferenze. I risultati vengono riutilizzati durante le modifiche al modulo; **Aggiorna modelli** richiede una nuova verifica. Modelli rimossi, provider offline, cataloghi vuoti e ragionamento incompatibile bloccano l’avvio finché la selezione non viene corretta esplicitamente. Le risposte storiche conservano i modelli originali. Per un nuovo profilo, salva prima provider/endpoint, verifica il catalogo e poi scegli la preferenza. Le modali riepilogano avvio, ripresa ed eliminazione; il consenso per API a consumo resta esplicito per ogni operazione.
 
 ## Token del server
 
@@ -97,7 +126,7 @@ Il limite conta **messaggi totali**, non coppie. La ripresa a 20 include quelli 
 
 `export` scarica copie offline esplicite nella cartella corrente e rifiuta di sovrascrivere file esistenti. Non crea uno storico operativo della CLI. Sono disponibili Markdown, TXT e HTML; l'API e il browser offrono anche il JSON canonico. L'HTML rimane un documento autonomo, sicuro e utilizzabile offline, distinto dalla Web UI.
 
-Per `resume` ed `export` sono accettati anche il nome di un JSON già indicizzato sul server o il suo ID. Un percorso locale del client non carica file nel server. `run --config FILE.toml` mantiene le opzioni del dialogo; percorsi, eseguibili e profili devono essere autorizzati/configurati sul server.
+Per `watch`, `resume` ed `export` sono accettati anche il nome di un JSON già indicizzato sul server o il suo ID. Un percorso locale del client non carica file nel server. `run --config FILE.toml` mantiene le opzioni del dialogo; percorsi, eseguibili e profili devono essere autorizzati/configurati sul server.
 
 Le impostazioni condivise sono modificabili da CLI e browser. Percorsi di salvataggio, installazione Codex e directory delle credenziali si configurano direttamente sul server e non sono modificabili via API.
 
@@ -224,7 +253,7 @@ Per servizi/container imposta sempre `ALTERECHO_HOME` assoluto e persistente: no
 
 ## Servizi di sistema
 
-I template non vengono installati o attivati automaticamente. Vedi le procedure in [deploy/README.md](../deploy/README.md): systemd, launchd di sistema e servizio Windows con WinSW. Tutti avviano lo stesso `alterecho serve`. Esegui il processo con un account dedicato/non amministrativo, directory riservate e Codex autenticato sotto quell'account.
+I template non vengono installati o attivati automaticamente. Vedi le procedure in [deploy/README.md](../deploy/README.md): systemd, launchd di sistema e servizio Windows con WinSW. Tutti avviano lo stesso `alterecho serve --foreground`. Esegui il processo con un account dedicato/non amministrativo, directory riservate e Codex autenticato sotto quell'account.
 
 ## Docker
 
@@ -245,7 +274,7 @@ I volumi `alterecho_data` e `codex_state` persistono dopo `docker compose down`;
 
 ## Build e verifica
 
-I risultati riportati in [VERIFICA.md](VERIFICA.md) appartengono alla verifica locale del 24 ottobre 2026: non sono uno stato CI pubblico. Il redesign del README non richiede nuove inferenze o modifiche al programma.
+I risultati e i limiti della 1.1 sono riportati in [VERIFICA.md](VERIFICA-1.1.md), aggiornato il 26 ottobre 2026. Il documento distingue le verifiche locali dall’esecuzione CI precedente e dalle piattaforme ancora da collaudare.
 
 ```sh
 cd web
@@ -258,13 +287,18 @@ python -m pip install ".[server]" build
 python -m unittest discover -v
 python -m build
 python deploy/check-package.py
+cd web
+npx playwright install chromium
+npm run test:e2e
 ```
 
-La suite standard usa provider mock e un app-server Codex simulato. Non consuma quote e non effettua inferenze Ollama. La pipeline GitHub Actions comprende Windows/Linux/macOS con Python 3.11–3.13, frontend, wheel/sdist e Docker. La sua esecuzione remota richiede che l'utente decida di pubblicare le modifiche.
+La suite standard usa provider mock e un app-server Codex simulato. Non consuma quote e non effettua inferenze Ollama. Playwright avvia un backend temporaneo su `127.0.0.1:18876`, con cataloghi e streaming simulati; i risultati sono in `web/test-results/`. La pipeline GitHub Actions comprende Windows/Linux/macOS con Python 3.11–3.13, frontend, browser, wheel/sdist e Docker. La sua esecuzione remota per la 1.1 richiede che l'utente decida di pubblicare le modifiche.
 
 Per standalone: `pip install ".[standalone]"`, poi `pyinstaller deploy/alterecho.spec`. Esegui la build sul sistema operativo di destinazione; Codex e Ollama restano dipendenze esterne. Non sono inclusi pesi, home utente o credenziali.
 
 Per aggiornare, arresta il servizio, esegui backup, installa il nuovo wheel non editable e riavvia. Non avviare più worker Uvicorn o due server sulle stesse directory.
+
+Se stai passando dalla 1.0, arresta prima il vecchio processo con il metodo usato per avviarlo (Ctrl+C in primo piano oppure il supervisore). `down` riconosce solo le nuove istanze gestite dalla CLI 1.1; non prende il controllo di processi precedenti. Con una porta diversa da 8765, configura l’endpoint del client con `--server URL` o `connect`.
 
 ## Risoluzione dei problemi e limiti
 
@@ -276,6 +310,6 @@ Per aggiornare, arresta il servizio, esegui backup, installa il nuovo wheel non 
 - **Frontend 503:** compila `web/` o installa un pacchetto con risorse statiche.
 - **Memoria Ollama:** nessuno scaricamento automatico di modelli di altre app; usa keep_alive a tempo se desideri scadenza.
 
-La versione 1.0 usa un singolo processo e un token amministrativo condiviso, senza utenti/ruoli multipli. I checkpoint sono durevoli, il replay SSE è limitato e in memoria: al riavvio o a cursore scaduto i client ricevono uno snapshot canonico. Non viene riavviata automaticamente un'inferenza interrotta dal crash. Non sono previsti un database distribuito o un desktop autonomo.
+La versione 1.1 usa un singolo processo e un token amministrativo condiviso, senza utenti/ruoli multipli. I checkpoint sono durevoli, il replay SSE è limitato e in memoria: al riavvio o a cursore scaduto i client ricevono uno snapshot canonico. Non viene riavviata automaticamente un'inferenza interrotta dal crash. Non sono previsti un database distribuito o un desktop autonomo.
 
-I risultati effettivamente eseguiti e le verifiche ancora mancanti sono in [docs/VERIFICA.md](VERIFICA.md). Dettagli tecnici in [ARCHITETTURA.md](../ARCHITETTURA.md). I documenti precedenti sono conservati in `docs/legacy/` come riferimento della versione 0.3.
+I risultati effettivamente eseguiti e le verifiche ancora mancanti sono in [docs/VERIFICA.md](VERIFICA-1.1.md). Dettagli tecnici in [ARCHITETTURA.md](../ARCHITETTURA.md). I documenti precedenti sono conservati in `docs/legacy/` come riferimento della versione 0.3.

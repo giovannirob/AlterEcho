@@ -7,9 +7,14 @@ outputs/
 dist/
 build/
 web/node_modules/
+web/test-results/
+web/playwright-report/
 .test-*.log
 .runtime-test/
 *.spec.bak
 *.bak
 .env
 secrets/
+release-assets/
+docker-artifacts/
+.VSCodeCounter
